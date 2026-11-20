@@ -821,6 +821,15 @@ void SerenityEditor::paintCustomWaveform(juce::Graphics& g){
                waveform.withAlpha(.30f+.06f*(float)(8-frame)));
   g.strokePath(path,juce::PathStrokeType(frame==selectedCustomFrame?2.2f:1.4f));
  }
+ // Repaint the numeric POSITION readout above the dynamic curves:
+ // do not obscure or clip the text from the original image.
+ g.setColour(background);
+ g.fillRoundedRectangle(scaleRect(472,163,178,97),4.f);
+ const float p=juce::jlimit(0.f,1.f,synth.getValue(serenity::position));
+ drawText(g,"POSITION",479,169,157,20,juce::Colour(0xffa6b6c9),12,true);
+ drawText(g,juce::String(p,2),478,189,165,37,juce::Colour(0xffe4edf5),30,true);
+ drawText(g,tr("IMAGE ","FRAME ")+juce::String(1.f+7.f*p,1)+" / 8",
+          479,231,158,23,juce::Colour(0xff94a7bd),12);
  // Eight original frame buttons stay in exactly the same position.
  g.setColour(gold);
  g.drawRoundedRectangle(scaleRect(463+selectedCustomFrame*84.f,599,79,66),5.f,2.f);
