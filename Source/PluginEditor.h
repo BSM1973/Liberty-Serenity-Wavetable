@@ -27,6 +27,7 @@ private:
  std::unique_ptr<juce::FileChooser> fileChooser;
  int tab=0,category=0,listOffset=0,matrixPage=0,selectedParameter=-1;
  int draggedParameter=-1,selectedOsc=0;
+ int sequencePage=0,sequenceDragLane=-1;
  float startValue=0;
  juce::Point<float> downPos;
  juce::String status;
@@ -41,6 +42,11 @@ private:
  void paintMatrix(juce::Graphics&);
  void paintOscillators(juce::Graphics&);
  void paintEditor(juce::Graphics&);
+ void paintSequencer(juce::Graphics&);
+ bool editSequenceAt(juce::Point<float>,int lane);
+ bool sequenceClick(juce::Point<float>);
+ void showSequenceRateMenu();
+ void showSequenceBankMenu();
  void showRouteMenu(int slot,bool source);
  void paintInteraction(juce::Graphics&);
  void paintTabTitle(juce::Graphics&,int,float,float,const char*,const char*,float=220);
