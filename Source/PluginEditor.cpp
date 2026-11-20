@@ -1004,42 +1004,53 @@ void SerenityEditor::showWavetableMenu(){
 
 
 void SerenityEditor::drawCustomHarmonic(juce::Point<float> p){
- constexpr float left=1174.f,right=1466.f,top=165.f,bottom=371.f;
+ // Left-hand dB labels and bottom 1/8/16/24/32 labels belong to the original skin.
+ constexpr float left=1202.f,right=1466.f,top=166.f,bottom=355.f;
  const int harmonic=juce::jlimit(1,serenity::spectral::displayedHarmonics,
-    1+(int)((juce::jlimit(left,right,p.x)-left)/
+    1+(int)((juce::jlimit(left,right-.01f,p.x)-left)/
       ((right-left)/serenity::spectral::displayedHarmonics)));
- const float amount=juce::jlimit(0.f,1.f,(bottom-juce::jlimit(top,bottom,p.y))/(bottom-top));
+ const float relativeDb=-60.f*juce::jlimit(0.f,1.f,(p.y-top)/(bottom-top));
+ const auto spectrum=synth.getCustomHarmonics(selectedOsc,selectedCustomFrame);
+ float peak=0.f;
+ for(auto x:spectrum)peak=std::max(peak,x);
+ const float reference=std::max(.05f,peak);
+ const float target=(p.y>=bottom-2.f)?0.f:
+   juce::jlimit(0.f,1.f,reference*std::pow(10.f,relativeDb/20.f));
  selectedHarmonic=harmonic;
- synth.setCustomHarmonic(selectedOsc,selectedCustomFrame,harmonic,amount);
+ synth.setCustomHarmonic(selectedOsc,selectedCustomFrame,harmonic,target);
  customEditorTouched=true;
  repaint();
 }
 void SerenityEditor::paintCustomHarmonics(juce::Graphics& g){
  constexpr int count=serenity::spectral::displayedHarmonics;
- const float left=1173.f,right=1467.f,top=159.f,bottom=373.f;
+ // Geometry follows the user's exact HARMONICS graph: preserve all axis labels.
+ constexpr float left=1202.f,right=1466.f,top=165.f,bottom=355.f;
  const float width=(right-left)/count;
  const auto spectrum=synth.getCustomHarmonics(selectedOsc,selectedCustomFrame);
+ float strongest=0.f;
+ for(auto x:spectrum)strongest=std::max(strongest,x);
  const auto background=juce::Colour(0xff0b121d);
  const auto grid=juce::Colour(0xff243144);
  const auto cyan=juce::Colour(0xff71d8e7);
  g.setColour(background);
- g.fillRoundedRectangle(scaleRect(left-2,top-2,right-left+4,bottom-top+4),4.f);
- for(int k=0;k<=4;k++){
-  const float y=bottom-(bottom-top)*(float)k/4.f;
+ g.fillRect(scaleRect(left-1.f,top-1.f,right-left+2.f,bottom-top+2.f));
+ for(int k=0;k<4;k++){
+  const float y=bottom-(bottom-top)*(float)k/3.f;
   auto bounds=scaleRect(left,y,right-left,0);
   g.setColour(grid);
   g.drawHorizontalLine((int)std::round(bounds.getY()),bounds.getX(),bounds.getRight());
  }
  for(int i=0;i<count;i++){
-  const float amplitude=juce::jlimit(0.f,1.f,spectrum[(size_t)i]);
-  const float h=(bottom-top-8.f)*amplitude;
+  const float amplitude=std::max(0.f,spectrum[(size_t)i]);
+  const float relativeDb=strongest>0.000001f&&amplitude>0.000001f
+   ?20.f*std::log10(amplitude/strongest):-60.f;
+  const float fraction=juce::jlimit(0.f,1.f,(relativeDb+60.f)/60.f);
+  const float height=(bottom-top-5.f)*fraction;
   const float x=left+i*width+width*.18f;
-  const float y=bottom-std::max(1.5f,h);
+  const float y=bottom-std::max(1.0f,height);
   g.setColour(i+1==selectedHarmonic?gold:cyan);
-  g.fillRoundedRectangle(scaleRect(x,y,width*.65f,std::max(1.5f,h)),1.4f);
+  g.fillRoundedRectangle(scaleRect(x,y,width*.64f,std::max(1.0f,height)),1.2f);
  }
- for(int n:{1,8,16,24,32}) {
-  const float x=left+(n-.5f)*width;
-  drawText(g,juce::String(n),x-12.f,376,30,15,juce::Colour(0xff91a7c1),10.f);
- }
+ // The original skin supplies the 0/-20/-40 dB axis, 1/8/16/24/32
+ // harmonics marks and caption. Do not paint over or duplicate those labels.
 }
