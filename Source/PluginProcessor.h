@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "DSP/SerenityDSP.h"
+#include "DSP/SerenitySpectralEditor.h"
 #include <array>
 #include <atomic>
 
@@ -57,6 +58,11 @@ public:
  void removeCustomDc(int oscillator,int frame) noexcept;
  void copyCustomFrame(int oscillator,int from,int to) noexcept;
  void resetCustomFrame(int oscillator,int frame) noexcept;
+ std::array<float,serenity::spectral::displayedHarmonics>
+ getCustomHarmonics(int oscillator,int frame) const noexcept;
+ void setCustomHarmonic(int oscillator,int frame,int harmonic,float amplitude) noexcept;
+ void transformCustomFrame(int oscillator,int frame,serenity::spectral::Transform mode) noexcept;
+ void morphCustomFrames(int oscillator,int first,int last) noexcept;
  void armMidiLearn(int parameter) noexcept;
  void clearMapping(int parameter) noexcept;
  int mappedCC(int parameter) const noexcept;
