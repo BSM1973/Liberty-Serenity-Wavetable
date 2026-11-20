@@ -314,7 +314,7 @@ class SerenityEditor final : public juce::AudioProcessorEditor, private juce::Ti
 public:
     explicit SerenityEditor(SerenityProcessor& processor)
        : juce::AudioProcessorEditor(processor), proc(processor) {
-        setSize(1380,900);
+        // Never call setSize before child controls exist: JUCE immediately invokes resized().
         setResizable(false,false);
         for(int i=0;i<10;i++) {
             auto b=std::make_unique<juce::TextButton>();
@@ -366,6 +366,9 @@ public:
         hint.setJustificationType(juce::Justification::centredLeft);
         hint.setFont(juce::Font(juce::FontOptions(13.f)));
         hint.setColour(juce::Label::textColourId,juce::Colour(0xffb9c5d7));
+        // All tabs, knobs, labels, and header controls are fully constructed.
+        uiReady = true;
+        setSize(1380,900);
         refresh();
         startTimerHz(5);
     }
@@ -453,6 +456,8 @@ public:
     }
 
     void resized() override {
+        // Guard against framework-driven resize callbacks during construction.
+        if (!uiReady) return;
         const int width=getWidth();
         for(int i=0;i<10;i++)tabs[(size_t)i]->setBounds(10+i*136,74,133,30);
         presets.setBounds(560,14,330,35);
@@ -498,6 +503,7 @@ private:
     juce::TextButton french,english,midi;
     juce::Label hint;
     int activeTab=0;
+    bool uiReady=false;
     void setKnob(int index,int x,int y,int w,int h,const juce::String& title) {
         auto& slider=*knobs[(size_t)index];
         slider.setBounds(x,y,w,h-26);
