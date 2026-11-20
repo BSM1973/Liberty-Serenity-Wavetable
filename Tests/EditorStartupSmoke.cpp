@@ -33,7 +33,24 @@ int main(){
   std::cerr<<"ERROR: Sequencer generated no valid audible steps"<<std::endl;
   return 21;
  }
+ // Verify the custom wavetable is a real audio generator, not a static UI drawing.
+ processor.setSequenceMode(0);
+ processor.setValue(serenity::oscAWave,(float)serenity::waveCount);
+ processor.setCustomPoint(0,4,21,.73f);
+ processor.setCustomPoint(1,7,511,-.37f);
+ audio.clear();
+ midi.clear();
+ midi.addEvent(juce::MidiMessage::noteOn(1,72,(juce::uint8)110),0);
+ processor.processBlock(audio,midi);
+ double customEnergy=0;
+ for(int n=0;n<audio.getNumSamples();n++){
+  const float value=audio.getSample(0,n);
+  if(!std::isfinite(value))return 23;
+  customEnergy+=value*value;
+ }
+ if(customEnergy<1.e-9)return 24;
  // Verify all 64 steps in all four banks can survive AU/VST3 project state roundtrips.
+ processor.setSequenceMode(2);
  processor.setSequenceBank(3);
  processor.setSequenceLength(64);
  processor.setSequenceStep(3,63,{-17,.42f,-.65f});
@@ -47,6 +64,12 @@ int main(){
     std::abs(last.velocity-.42f)>.001f || std::abs(last.modulation+.65f)>.001f) {
   std::cerr<<"ERROR: Sequencer state did not survive project reload"<<std::endl;
   return 22;
+ }
+ if(std::abs(restored.getCustomPoint(0,4,21)-.73f)>.00001f ||
+    std::abs(restored.getCustomPoint(1,7,511)+.37f)>.00001f ||
+    (int)std::lround(restored.getValue(serenity::oscAWave))!=serenity::waveCount){
+   std::cerr<<"ERROR: user wavetable frames did not survive project save/load"<<std::endl;
+   return 25;
  }
  processor.setSequenceMode(0);
  auto editor=std::make_unique<SerenityEditor>(processor);
