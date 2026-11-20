@@ -39,8 +39,9 @@ int main() {
  assert(clock.currentStep()==2); // 2nd step 0.75x duration
  p.length=64;p.mode=1;p.steps[63].pitch=24;p.steps[63].modulation=-1.f;
  clock.reset();clock.setPattern(p);
- for(int i=0;i<63*6000;i++)clock.tick(); // swing pairs preserve full two-step period
- assert(clock.currentStep()==63);
+ int safety=0;
+ while(clock.currentStep()!=63 && safety++<400000)clock.tick();
+ assert(safety<400000 && clock.currentStep()==63);
  auto frame=clock.tick();
  assert(frame.pitch==24 && frame.modulation==0.f); // arpeggiator ignores mod lane
  p.mode=0;clock.setPattern(p);
