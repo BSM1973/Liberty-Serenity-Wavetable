@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.22)
 project(SerenityWavetable VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Force UTF-8 compilation on Windows. Original French labels use UTF-8 literals.
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
 
 include(CTest)
 add_library(serenity_dsp INTERFACE)
