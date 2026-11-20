@@ -70,22 +70,49 @@ public:
   while(mip<customMipCount-1 && (1<<(customMipCount-1-mip))>allowed)++mip;
   return mip;
  }
+ // Blend only on the SAFE side of each harmonic-limit boundary.
+ // The brighter mip is fully faded out before any of its partials exceed
+ // 0.48 * sampleRate, avoiding alias leakage at the transition.
+ struct MipBlend {
+  int bright=-1, dark=-1;
+  float darkWeight=0.f;
+ };
+ static MipBlend blendFor(float hz,float sampleRate) noexcept {
+  const int bright=levelFor(hz,sampleRate);
+  if(bright<0)return {};
+  MipBlend result{bright,bright,0.f};
+  if(bright>=customMipCount-1)return result;
+  const int harmonicCap=1<<(customMipCount-1-bright);
+  const float boundary=sampleRate*.48f/(float)harmonicCap;
+  constexpr float fadeStart=0.8f;
+  const float start=fadeStart*boundary;
+  if(hz<=start)return result;
+  const float t=std::clamp((hz-start)/(boundary-start),0.f,1.f);
+  result.dark=bright+1;
+  result.darkWeight=t*t*(3.f-2.f*t); // phase-continuous smoothstep
+  return result;
+ }
  float sample(int osc,float phase,float framePosition,float hz,float sampleRate) const noexcept {
   if(osc<0||osc>=editableOscillators || !std::isfinite(phase) ||
-     !std::isfinite(framePosition)) return 0.f;
-  const int mip=levelFor(hz,sampleRate);
-  if(mip<0)return 0.f;
+     !std::isfinite(framePosition))return 0.f;
+  const auto blend=blendFor(hz,sampleRate);
+  if(blend.bright<0)return 0.f;
   const float f=std::clamp(framePosition,0.f,1.f)*(editableFrames-1);
   const int a=(int)f,b=std::min(a+1,editableFrames-1);
   const float frameBlend=f-(float)a;
-  const float t=(phase-std::floor(phase))*editableSamples;
-  const int i=((int)t)&(editableSamples-1),j=(i+1)&(editableSamples-1);
-  const float phaseBlend=t-std::floor(t);
-  const float x=point(osc,a,mip,i)+
-                (point(osc,a,mip,j)-point(osc,a,mip,i))*phaseBlend;
-  const float y=point(osc,b,mip,i)+
-                (point(osc,b,mip,j)-point(osc,b,mip,i))*phaseBlend;
-  return x+(y-x)*frameBlend;
+  const float p=(phase-std::floor(phase))*editableSamples;
+  const int i=((int)p)&(editableSamples-1),j=(i+1)&(editableSamples-1);
+  const float phaseBlend=p-std::floor(p);
+  auto atLevel=[&](int mip) noexcept {
+   const float x=point(osc,a,mip,i)+
+                 (point(osc,a,mip,j)-point(osc,a,mip,i))*phaseBlend;
+   const float y=point(osc,b,mip,i)+
+                 (point(osc,b,mip,j)-point(osc,b,mip,i))*phaseBlend;
+   return x+(y-x)*frameBlend;
+  };
+  const float brighter=atLevel(blend.bright);
+  if(blend.dark==blend.bright||blend.darkWeight<=0.f)return brighter;
+  return brighter+(atLevel(blend.dark)-brighter)*blend.darkWeight;
  }
  // Test/debug path; exposes generated table at a given mip level, not GUI data.
  float levelPoint(int osc,int frame,int mip,int sample) const noexcept {
