@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "SerenitySequencer.h"
+#include "SerenityCustomWavetable.h"
 
 namespace serenity {
 constexpr float pi=3.14159265358979323846f;
@@ -139,6 +140,7 @@ struct ModRoute {
 
 class Engine {
  WavetableBank bank;
+ EditableWavetable customTable{};
  std::array<Voice,maxVoices> voices{};
  std::array<ModRoute,64> routes{};
  float sr=48000, lfoPhase=0,modWheel=0;
@@ -155,7 +157,13 @@ class Engine {
  }
  static float noteHz(int note) noexcept {return 440.f*std::pow(2.f,(note-69)/12.f);}
 public:
- Engine()=default;
+ Engine(){customTable.resetSine();}
+ void setCustomSample(int oscillator,int frame,int sample,float value) noexcept {
+  customTable.put(oscillator,frame,sample,value);
+ }
+ float customSample(int oscillator,int frame,int sample) const noexcept {
+  return customTable.get(oscillator,frame,sample);
+ }
  void prepare(double sampleRate) {
   sr=(float)std::max(8000.0,sampleRate);
   sequence.prepare(sampleRate);
@@ -242,7 +250,9 @@ public:
       float det=(uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.detune*.19f;
       float freq=base*std::pow(2.f,det/12.f);
       float &ph=v.phase[gen][u];
-      float x=bank.sample(p.wave[gen],ph,clamp(p.position+frameMod,0,1),freq,sr)*amp;
+      float x=(p.wave[gen]==waveCount ?
+       customTable.sample(gen,ph,clamp(p.position+frameMod,0,1)) :
+       bank.sample(p.wave[gen],ph,clamp(p.position+frameMod,0,1),freq,sr))*amp;
       ph+=freq/sr;if(ph>=1.f)ph-=std::floor(ph);
       float pan=clamp(((uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.spread)+panMod,-1,1);
       vl+=x*(1-pan)*.5f;vr+=x*(1+pan)*.5f;
