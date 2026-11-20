@@ -198,6 +198,42 @@ void SerenityAudioProcessor::resetCustomFrame(int oscillator,int frame) noexcept
   points[(size_t)i]=std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
  commitCustomFrame(oscillator,frame,points);
 }
+
+std::array<float,serenity::spectral::displayedHarmonics>
+SerenityAudioProcessor::getCustomHarmonics(int osc,int frame) const noexcept {
+ serenity::spectral::Frame values{};
+ if(osc<0||osc>=serenity::editableOscillators||frame<0||frame>=serenity::editableFrames)return {};
+ for(int i=0;i<serenity::editableSamples;i++)
+  values[(size_t)i]=getCustomPoint(osc,frame,i);
+ return serenity::spectral::analyze(values);
+}
+void SerenityAudioProcessor::setCustomHarmonic(int osc,int frame,int harmonic,float amplitude) noexcept {
+ if(osc<0||osc>=serenity::editableOscillators||frame<0||frame>=serenity::editableFrames||
+    harmonic<1||harmonic>serenity::spectral::displayedHarmonics)return;
+ serenity::spectral::Frame values{};
+ for(int i=0;i<serenity::editableSamples;i++)values[(size_t)i]=getCustomPoint(osc,frame,i);
+ commitCustomFrame(osc,frame,serenity::spectral::setHarmonic(values,harmonic,amplitude));
+}
+void SerenityAudioProcessor::transformCustomFrame(int osc,int frame,serenity::spectral::Transform transform) noexcept {
+ if(osc<0||osc>=serenity::editableOscillators||frame<0||frame>=serenity::editableFrames)return;
+ serenity::spectral::Frame values{};
+ for(int i=0;i<serenity::editableSamples;i++)values[(size_t)i]=getCustomPoint(osc,frame,i);
+ commitCustomFrame(osc,frame,serenity::spectral::transform(values,transform));
+}
+void SerenityAudioProcessor::morphCustomFrames(int osc,int first,int last) noexcept {
+ if(osc<0||osc>=serenity::editableOscillators||
+    first<0||last>=serenity::editableFrames||first>=last-1)return;
+ serenity::spectral::Frame a{},b{};
+ for(int i=0;i<serenity::editableSamples;i++){
+  a[(size_t)i]=getCustomPoint(osc,first,i);
+  b[(size_t)i]=getCustomPoint(osc,last,i);
+ }
+ for(int frame=first+1;frame<last;frame++) {
+  const float t=(float)(frame-first)/(last-first);
+  commitCustomFrame(osc,frame,serenity::spectral::morph(a,b,t));
+ }
+}
+
 void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi){
  juce::ScopedNoDenormals noDenormals;
  buffer.clear();
