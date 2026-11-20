@@ -285,6 +285,7 @@ void SerenityEditor::paint(juce::Graphics& g){
  if(tab==0)paintOscillators(g);
  if(tab==1)paintEditor(g);
  if(tab==7)paintMatrix(g);
+ if(tab==5||tab==6)paintSequencer(g);
  if(tab==8)paintPresets(g);
  if(tab==9)paintSettings(g);
  paintInteraction(g);
@@ -410,6 +411,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   if(p.x>316&&p.x<358){selectPreset((synth.currentPreset()+99)%100);return;}
   if(p.x>637&&p.x<680){selectPreset((synth.currentPreset()+1)%100);return;}
  }
+ if((tab==5||tab==6)&&sequenceClick(p))return;
  if(tab==0&&p.x>186&&p.x<253&&p.y>121&&p.y<624){
   int which=juce::jlimit(0,3,(int)((p.y-121)/129.f));
   const int levels[]={serenity::oscALevel,serenity::oscBLevel,serenity::oscCLevel,serenity::oscDLevel};
@@ -503,6 +505,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
  }
 }
 void SerenityEditor::mouseDrag(const juce::MouseEvent& e){
+ if(sequenceDragLane>=0){editSequenceAt(logical(e.position),sequenceDragLane);return;}
  if(draggedParameter<0)return;
  const auto &spec=serenity::specs[(size_t)draggedParameter];
  auto p=logical(e.position);
@@ -510,7 +513,7 @@ void SerenityEditor::mouseDrag(const juce::MouseEvent& e){
  synth.setValue(draggedParameter,juce::jlimit(spec.lo,spec.hi,startValue+change));
  showStatus(juce::String(spec.id)+" : "+juce::String(synth.getValue(draggedParameter),3));
 }
-void SerenityEditor::mouseUp(const juce::MouseEvent&){draggedParameter=-1;}
+void SerenityEditor::mouseUp(const juce::MouseEvent&){draggedParameter=-1;sequenceDragLane=-1;}
 void SerenityEditor::mouseDoubleClick(const juce::MouseEvent& e){
  int index=paramAt(logical(e.position));
  if(index>=0){synth.setValue(index,serenity::specs[(size_t)index].initial);
@@ -534,4 +537,199 @@ void SerenityEditor::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseW
 void SerenityEditor::timerCallback(){
  if(statusCountdown>0)statusCountdown--;
  repaint();
+}
+
+
+void SerenityEditor::paintSequencer(juce::Graphics& g) {
+ if(tab!=5 && tab!=6)return;
+ const bool arp=tab==5;
+ const bool enabled=synth.getSequenceMode()==(arp?1:2);
+ if(!enabled && !sequenceTouched)return; // Original screenshot is left pixel-for-pixel at startup.
+ const int bank=synth.getSequenceBank();
+ const int length=synth.getSequenceLength();
+ const int playing=synth.getSequencePlayingStep();
+ const int first=sequencePage*16;
+ const float xStart=86.f,cell=85.6f;
+ const auto ink=juce::Colour(0xff09121d);
+ const auto grid=juce::Colour(0xff263449);
+ const auto normal=juce::Colour(0xff6ed5e4);
+ const auto dim=juce::Colour(0xff2b5661);
+ const auto mod=juce::Colour(0xffa883ed);
+ auto drawLane=[&](float top,float bottom,float middle,int type){
+  auto area=scaleRect(75,top,1390,bottom-top);
+  g.setColour(ink);g.fillRect(area);
+  g.setColour(grid);
+  for(int q=0;q<=4;q++) {
+   auto yy=(top+(bottom-top)*q/4.f)*getHeight()/canvasHeight;
+   g.drawHorizontalLine((int)std::round(yy),area.getX(),area.getRight());
+  }
+  const auto midPixel=(middle*getHeight()/canvasHeight);
+  g.setColour(juce::Colour(0xff49617a));
+  g.drawHorizontalLine((int)std::round(midPixel),area.getX(),area.getRight());
+  for(int i=0;i<16;i++){
+   const int index=first+i;
+   const auto step=synth.getSequenceStep(bank,index);
+   const bool active=index<length;
+   const float center=xStart+cell*i+cell*.5f;
+   const float width=cell*.72f;
+   const float drawX=center-width*.5f;
+   float value=0;
+   if(type==0)value=(float)step.pitch/24.f;
+   if(type==1)value=step.velocity;
+   if(type==2)value=step.modulation;
+   const float vertical=(type==1) ? (bottom-top-16.f) : (bottom-top)*.46f;
+   const float high=std::max(1.5f,std::abs(value)*vertical);
+   const float baseline=type==1?bottom-4.f:middle;
+   const float y=(type==1||value>=0)?baseline-high:baseline;
+   g.setColour(active?(type==2?mod:normal):dim);
+   g.fillRoundedRectangle(scaleRect(drawX,y,width,high),2.0f);
+   if(active && playing==index && enabled){
+    g.setColour(gold.withAlpha(.9f));
+    g.drawRoundedRectangle(scaleRect(drawX-3.f,top+3.f,width+6.f,bottom-top-6.f),3.f,1.4f);
+   }
+   if(type==0 && active) drawText(g,juce::String(step.pitch),drawX+12,y-22.f,48,20,muted,11);
+   if(type==2) drawText(g,juce::String(index+1),center-12,bottom+2,30,18,muted,10);
+  }
+  if(length<=first) {
+   g.setColour(dim.withAlpha(.55f));g.fillRect(area);
+  }
+ };
+ if(arp){
+  drawLane(365.f,622.f,494.f,0);
+  drawText(g,tr("ARP : ","ARP: ")+juce::String(length)+
+          " · "+juce::String(synth.getSequenceRate())+"th",76,335,355,25,aqua,12,true);
+ }else{
+  drawLane(326.f,440.f,385.f,0);
+  drawLane(519.f,607.f,603.f,1);
+  drawLane(705.f,796.f,751.f,2);
+  drawText(g,tr("BANQUE ","BANK ")+juce::String(bank+1)+
+           " · "+juce::String(length)+tr(" PAS"," STEPS"),
+           1107,164,176,24,violet,12,true);
+ }
+ drawText(g,juce::String(sequencePage+1)+"/4",1396,800,60,22,gold,12,true);
+ if(enabled){
+  const auto label=arp?tr("ARP : ACTIVÉ","ARP: ON"):tr("SEQ : ACTIVÉ","SEQ: ON");
+  g.setColour(juce::Colour(0xff12404b));
+  g.fillRoundedRectangle(scaleRect(25,183,148,30),14.f);
+  drawText(g,label,40,183,120,30,aqua,12,true);
+ }
+}
+bool SerenityEditor::editSequenceAt(juce::Point<float> p,int lane) {
+ const int bank=synth.getSequenceBank();
+ const int index=sequencePage*16+juce::jlimit(0,15,(int)((p.x-85.f)/85.6f));
+ if(index>=64||p.x<76||p.x>1460)return false;
+ const auto stepBefore=synth.getSequenceStep(bank,index);
+ auto step=stepBefore;
+ if(lane==0){
+  const float baseline=(tab==5)?494.f:385.f;
+  const float extent=(tab==5)?125.f:55.f;
+  step.pitch=juce::jlimit(-24,24,(int)std::lround((baseline-p.y)/extent*24.f));
+ }else if(lane==1){
+  step.velocity=juce::jlimit(0.f,1.f,(603.f-p.y)/77.f);
+ }else if(lane==2){
+  step.modulation=juce::jlimit(-1.f,1.f,(751.f-p.y)/39.f);
+ }else return false;
+ synth.setSequenceStep(bank,index,step);
+ sequenceTouched=true;
+ repaint();
+ return true;
+}
+void SerenityEditor::showSequenceRateMenu(){
+ juce::PopupMenu m;
+ m.addSectionHeader(tr("DIVISION RYTHMIQUE","STEP DIVISION"));
+ for(int rate:{4,8,16,32})
+  m.addItem(rate,juce::String("1/")+juce::String(rate),true,synth.getSequenceRate()==rate);
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ m.showMenuAsync(juce::PopupMenu::Options(),[safe](int choice){
+  if(!safe||choice==0)return;
+  safe->synth.setSequenceRate(choice);
+  safe->showStatus(juce::String("1/")+juce::String(choice));
+  safe->sequenceTouched=true;safe->repaint();
+ });
+}
+void SerenityEditor::showSequenceBankMenu(){
+ juce::PopupMenu m;
+ m.addSectionHeader(tr("BANQUE DE PATTERNS","PATTERN BANK"));
+ for(int i=0;i<4;i++)
+  m.addItem(i+1,tr("Banque ","Bank ")+juce::String(i+1),true,synth.getSequenceBank()==i);
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ m.showMenuAsync(juce::PopupMenu::Options(),[safe](int choice){
+  if(!safe||choice==0)return;
+  safe->synth.setSequenceBank(choice-1);
+  safe->sequenceTouched=true;safe->repaint();
+ });
+}
+bool SerenityEditor::sequenceClick(juce::Point<float> p) {
+ const bool arp=tab==5;
+ if(p.x>=25&&p.x<174&&p.y>174&&p.y<229){
+  const int mode=arp?1:2;
+  synth.setSequenceMode(synth.getSequenceMode()==mode?0:mode);
+  sequenceTouched=true;
+  showStatus(arp?tr("Arpégiateur activé / désactivé","Arpeggiator toggled"):
+                 tr("Séquenceur activé / désactivé","Sequencer toggled"));
+  return true;
+ }
+ if(p.x>=196&&p.x<388&&p.y>=185&&p.y<238){showSequenceRateMenu();return true;}
+ if(p.x>=414&&p.x<488&&p.y>=165&&p.y<244){
+  juce::PopupMenu menu;
+  for(int count:{8,16,32,64})
+   menu.addItem(count,juce::String(count)+tr(" pas"," steps"),true,synth.getSequenceLength()==count);
+  juce::Component::SafePointer<SerenityEditor> safe(this);
+  menu.showMenuAsync(juce::PopupMenu::Options(),[safe](int count){
+   if(!safe||count<=0)return;
+   safe->synth.setSequenceLength(count);safe->sequencePage=0;
+   safe->sequenceTouched=true;safe->repaint();
+  });
+  return true;
+ }
+ if(p.x>=497&&p.x<565&&p.y>=168&&p.y<242){
+  synth.setSequenceGate(juce::jlimit(0.05f,1.f,synth.getSequenceGate()+.10f));
+  sequenceTouched=true;showStatus(tr("Durée des pas : ","Step gate: ")+juce::String(synth.getSequenceGate(),2));return true;
+ }
+ if(p.x>=577&&p.x<655&&p.y>=168&&p.y<242){
+  synth.setSequenceSwing(synth.getSequenceSwing()>=.48f?0.f:synth.getSequenceSwing()+.10f);
+  sequenceTouched=true;showStatus("Swing : "+juce::String(synth.getSequenceSwing(),2));return true;
+ }
+ if(!arp&&p.x>=1250&&p.x<1375&&p.y>=159&&p.y<231){showSequenceBankMenu();return true;}
+ // Right and left arrows in the three sequencer lane headers.
+ if(!arp&&p.x>1390&&p.x<1482&&
+    ((p.y>=261&&p.y<=305)||(p.y>=466&&p.y<=509)||(p.y>=640&&p.y<=681))){
+  sequencePage=(sequencePage+(p.x<1438?3:1))%4;
+  sequenceTouched=true;repaint();return true;
+ }
+ if(arp&&p.x>1350&&p.y>292&&p.y<330){sequencePage=(sequencePage+1)%4;sequenceTouched=true;repaint();return true;}
+ const bool pitch=arp?(p.y>=356&&p.y<640):(p.y>=311&&p.y<450);
+ const bool level=!arp&&p.y>=508&&p.y<614;
+ const bool modulation=!arp&&p.y>=689&&p.y<807;
+ if(p.x>75&&p.x<1463&&(pitch||level||modulation)){
+  const int lane=pitch?0:(level?1:2);
+  if(editSequenceAt(p,lane)){sequenceDragLane=lane;return true;}
+ }
+ if(arp&&p.y>741&&p.y<784&&p.x>=125&&p.x<1364){
+  const int tool=juce::jlimit(0,8,(int)((p.x-125)/139.f));
+  static const int shapes[9][8]={
+   {0,12,24,12,0,12,24,12},{0,4,7,12,7,4,0,4},{0,3,7,12,7,3,0,3},
+   {0,3,7,10,7,3,0,3},{0,4,7,11,7,4,0,4},{0,4,7,12,7,4,0,-5},
+   {0,7,12,7,0,7,12,7},{0,5,7,12,7,5,0,5},{0,0,0,0,0,0,0,0}
+  };
+  const int bank=synth.getSequenceBank();
+  for(int i=0;i<64;i++){auto v=synth.getSequenceStep(bank,i);v.pitch=shapes[tool][i%8];synth.setSequenceStep(bank,i,v);}
+  sequenceTouched=true;repaint();return true;
+ }
+ if(arp&&p.y>786&&p.y<828&&p.x>=125&&p.x<812){
+  const int edit=juce::jlimit(0,4,(int)((p.x-125)/140.f));
+  const int bank=synth.getSequenceBank();
+  std::array<serenity::SequenceStep,64> copy{};
+  for(int i=0;i<64;i++)copy[(size_t)i]=synth.getSequenceStep(bank,i);
+  for(int i=0;i<64;i++){
+   auto v=copy[(size_t)i];
+   if(edit<=1)v.pitch=juce::jlimit(-24,24,v.pitch+(edit==0?-12:12));
+   else if(edit==2)v=copy[(size_t)((i+1)%64)];
+   else if(edit==3)v=copy[(size_t)((i+63)%64)];
+   else v.pitch=juce::Random::getSystemRandom().nextInt(49)-24;
+   synth.setSequenceStep(bank,i,v);
+  }
+  sequenceTouched=true;repaint();return true;
+ }
+ return false;
 }
