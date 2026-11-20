@@ -1,3 +1,7 @@
+// Keep assert-based DSP regression checks enabled in Release CI builds.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include "SerenityDSP.h"
 #include <cassert>
 #include <cmath>
