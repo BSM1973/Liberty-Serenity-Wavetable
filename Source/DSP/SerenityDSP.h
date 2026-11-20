@@ -10,6 +10,7 @@
 #include <vector>
 #include "SerenitySequencer.h"
 #include "SerenityCustomWavetable.h"
+#include "SerenityBandlimitedWavetable.h"
 
 namespace serenity {
 constexpr float pi=3.14159265358979323846f;
@@ -141,6 +142,7 @@ struct ModRoute {
 class Engine {
  WavetableBank bank;
  EditableWavetable customTable{};
+ BandlimitedCustomWavetable customBandlimited{};
  std::array<Voice,maxVoices> voices{};
  std::array<ModRoute,64> routes{};
  float sr=48000, lfoPhase=0,modWheel=0;
@@ -163,6 +165,11 @@ public:
  }
  float customSample(int oscillator,int frame,int sample) const noexcept {
   return customTable.get(oscillator,frame,sample);
+ }
+ // Replaces one immutable fixed-size frame snapshot at a block boundary.
+ // FFT and allocation are deliberately absent from this API and render().
+ void setCustomMipFrame(int oscillator,int frame,const CustomMipFrame& mips) noexcept {
+  customBandlimited.setFrame(oscillator,frame,mips);
  }
  void prepare(double sampleRate) {
   sr=(float)std::max(8000.0,sampleRate);
@@ -251,7 +258,7 @@ public:
       float freq=base*std::pow(2.f,det/12.f);
       float &ph=v.phase[gen][u];
       float x=(p.wave[gen]==waveCount ?
-       customTable.sample(gen,ph,clamp(p.position+frameMod,0,1)) :
+       customBandlimited.sample(gen,ph,clamp(p.position+frameMod,0,1),freq,sr) :
        bank.sample(p.wave[gen],ph,clamp(p.position+frameMod,0,1),freq,sr))*amp;
       ph+=freq/sr;if(ph>=1.f)ph-=std::floor(ph);
       float pan=clamp(((uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.spread)+panMod,-1,1);
