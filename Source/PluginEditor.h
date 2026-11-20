@@ -28,6 +28,7 @@ private:
  int tab=0,category=0,listOffset=0,matrixPage=0,selectedParameter=-1;
  int draggedParameter=-1,selectedOsc=0;
  int sequencePage=0,sequenceDragLane=-1;
+ bool sequenceTouched=false;
  float startValue=0;
  juce::Point<float> downPos;
  juce::String status;
