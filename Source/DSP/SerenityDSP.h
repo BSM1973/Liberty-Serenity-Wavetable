@@ -143,6 +143,7 @@ class Engine {
  std::array<ModRoute,64> routes{};
  float sr=48000, lfoPhase=0,modWheel=0;
  StepClock sequence;
+ int lastSequenceIndex=-1;
  uint64_t noteCounter=0;
  std::vector<float> delayL,delayR,reverbL,reverbR;
  size_t delayIndex=0, reverbIndex=0;
@@ -163,10 +164,13 @@ public:
   delayIndex=reverbIndex=0;
   reset();
  }
- void reset() noexcept {for(auto &v:voices)v=Voice{};lfoPhase=0;activeCount=0;sequence.reset();}
+ void reset() noexcept {for(auto &v:voices)v=Voice{};lfoPhase=0;activeCount=0;sequence.reset();lastSequenceIndex=-1;}
  void setParams(const Params &next) noexcept {p=next;p.polyphony=std::max(1,std::min(p.polyphony,maxVoices));}
  void setModWheel(float value) noexcept {modWheel=clamp(value,0,1);}
- void setSequence(const SequencePattern& pattern) noexcept { sequence.setPattern(pattern); }
+ void setSequence(const SequencePattern& pattern) noexcept {
+  if(pattern.mode==0)lastSequenceIndex=-1;
+  sequence.setPattern(pattern);
+ }
  int sequenceStep() const noexcept { return sequence.currentStep(); }
  const Params &params() const noexcept {return p;}
  ModRoute &route(size_t i) noexcept {return routes[std::min(i,routes.size()-1)];}
@@ -188,6 +192,8 @@ public:
   for(int n=0;n<count;n++){
    float l=0,r=0;
    const SequenceFrame seq=sequence.tick();
+   const bool retrigger=seq.index>=0 && seq.index!=lastSequenceIndex && seq.velocity>0.f;
+   lastSequenceIndex=seq.index;
    float lfo=std::sin(2*pi*lfoPhase);
    std::array<float,8> lfos{};
    for(int k=0;k<8;k++) lfos[(size_t)k]=std::sin(2*pi*(lfoPhase*(1+k*.18f)+k*.125f));
@@ -195,6 +201,8 @@ public:
    int countActive=0;
    for(auto &v:voices){
     if(!v.active) continue;
+    // Retrigger the envelope on every played step without reallocating voices.
+    if(retrigger){v.amp.on();for(auto &envelope:v.envelopes)envelope.on();}
     float env=v.amp.next(p,sr);
     // Keep voice allocation intact while steps gate/retrigger the held note.
     // Short smoothing avoids clicks at step/rest boundaries.
