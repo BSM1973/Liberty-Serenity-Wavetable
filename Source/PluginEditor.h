@@ -30,7 +30,8 @@ private:
  int sequencePage=0,sequenceDragLane=-1;
  int selectedCustomFrame=4,customDrawLastSample=-1;
  float customDrawLastValue=0.f;
- bool drawingCustom=false,customEditorTouched=false;
+ bool drawingCustom=false,drawingHarmonic=false,customEditorTouched=false;
+ int selectedHarmonic=1;
  bool sequenceTouched=false;
  float startValue=0;
  juce::Point<float> downPos;
@@ -50,6 +51,8 @@ private:
  void importWavetableAudio();
  void drawCustomPoint(juce::Point<float> p);
  void paintCustomWaveform(juce::Graphics& g);
+ void paintCustomHarmonics(juce::Graphics& g);
+ void drawCustomHarmonic(juce::Point<float> p);
  void paintSequencer(juce::Graphics&);
  bool editSequenceAt(juce::Point<float>,int lane);
  bool sequenceClick(juce::Point<float>);
