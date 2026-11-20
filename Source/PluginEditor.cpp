@@ -588,7 +588,7 @@ void SerenityEditor::paintSequencer(juce::Graphics& g) {
     g.drawRoundedRectangle(scaleRect(drawX-3.f,top+3.f,width+6.f,bottom-top-6.f),3.f,1.4f);
    }
    if(type==0 && active)
-    drawText(g,(step.pitch>0?"+":"")+juce::String(step.pitch),drawX+12,y-22.f,48,20,muted,11);
+    drawText(g,juce::String(step.pitch>0?"+":"")+juce::String(step.pitch),drawX+12,y-22.f,48,20,muted,11);
   }
   if(length<=first) {
    g.setColour(dim.withAlpha(.55f));g.fillRect(area);
