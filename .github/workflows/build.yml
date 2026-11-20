@@ -1,0 +1,78 @@
+name: Serenity WAVETABLE — Build & Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: macOS-ARM64
+          - runner: windows-2022
+            platform: Windows-x64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Configure JUCE 8
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "macOS-ARM64" ]; then
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+          else
+            cmake -S . -B build -A x64
+          fi
+
+      - name: Build AU / VST3 / Standalone
+        shell: bash
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Verify built plugin folders
+        shell: bash
+        run: |
+          test -d build/SerenityWavetable_artefacts/Release/VST3
+          test -d build/SerenityWavetable_artefacts/Release/Standalone
+          if [ "${{ matrix.platform }}" = "macOS-ARM64" ]; then
+            test -d build/SerenityWavetable_artefacts/Release/AU
+          fi
+
+      - name: Package macOS AU VST3 Standalone
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p dist/Serenity-WAVETABLE-macOS-ARM64
+          cp -R build/SerenityWavetable_artefacts/Release/AU dist/Serenity-WAVETABLE-macOS-ARM64/
+          cp -R build/SerenityWavetable_artefacts/Release/VST3 dist/Serenity-WAVETABLE-macOS-ARM64/
+          cp -R build/SerenityWavetable_artefacts/Release/Standalone dist/Serenity-WAVETABLE-macOS-ARM64/
+          ditto -c -k --sequesterRsrc --keepParent dist/Serenity-WAVETABLE-macOS-ARM64 \
+            dist/Serenity-WAVETABLE-macOS-ARM64.zip
+
+      - name: Package Windows VST3 Standalone
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force 'dist/Serenity-WAVETABLE-Windows-x64' | Out-Null
+          Copy-Item -Recurse 'build/SerenityWavetable_artefacts/Release/VST3' 'dist/Serenity-WAVETABLE-Windows-x64/'
+          Copy-Item -Recurse 'build/SerenityWavetable_artefacts/Release/Standalone' 'dist/Serenity-WAVETABLE-Windows-x64/'
+          Compress-Archive -Path 'dist/Serenity-WAVETABLE-Windows-x64' -DestinationPath 'dist/Serenity-WAVETABLE-Windows-x64.zip' -Force
+
+      - name: Upload downloadable build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Serenity-WAVETABLE-${{ matrix.platform }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+# Unsigned development binaries. Commercial signing/notarization is not configured.
