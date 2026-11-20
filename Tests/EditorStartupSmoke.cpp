@@ -41,6 +41,7 @@ int main(){
   smoothWave[(size_t)i]=.73f*std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
  processor.commitCustomFrame(0,4,smoothWave);
  processor.setCustomPoint(1,7,511,-.37f);
+ processor.rebuildCustomFrame(1,7); // Publish the completed audio-safe mip snapshot.
  std::array<float,serenity::editableSamples> quietSine{};
  for(int i=0;i<serenity::editableSamples;i++)
   quietSine[(size_t)i]=.28f*std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
