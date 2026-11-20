@@ -194,7 +194,9 @@ void SerenityEditor::paintEditor(juce::Graphics& g){
  int wave=(int)synth.getValue(waves[selectedOsc]);
  int col=wave%4,row=wave/4;
  g.setColour(gold);
- g.drawRoundedRectangle(scaleRect(24+col*103.5f,205+row*94.9f,96,80),4.f,2.f);
+ if(wave<serenity::waveCount)
+  g.drawRoundedRectangle(scaleRect(24+col*103.5f,205+row*94.9f,96,80),4.f,2.f);
+ paintCustomWaveform(g);
 }
 
 void SerenityEditor::paintMatrix(juce::Graphics& g){
@@ -421,6 +423,22 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
              (enabled?" OFF":" ON"));return;
  }
  if(tab==1){
+  // OUTPUT WAVEFORM is edited in place, exactly within the original drawing pane.
+  if(p.x>=1168&&p.x<=1472&&p.y>=465&&p.y<=611) {
+   if(e.mods.isRightButtonDown()){showWavetableMenu();return;}
+   if(!e.mods.isLeftButtonDown())return;
+   synth.setValue(serenity::oscAWave+selectedOsc,(float)serenity::waveCount);
+   drawingCustom=true;customDrawLastSample=-1;
+   drawCustomPoint(p);return;
+  }
+  if(p.x>=465&&p.x<=1135&&p.y>=599&&p.y<=665){
+   selectedCustomFrame=juce::jlimit(0,7,(int)((p.x-465.f)/84.f));
+   synth.setValue(serenity::position,(float)selectedCustomFrame/7.f);
+   customEditorTouched=true;repaint();return;
+  }
+  if(e.mods.isRightButtonDown()&&p.x>=462&&p.x<=1137&&p.y>=163&&p.y<=570) {
+   showWavetableMenu();return;
+  }
   if(p.x>20&&p.x<426&&p.y>153&&p.y<193){
    selectedOsc=juce::jlimit(0,3,(int)((p.x-20)/104.f));repaint();return;
   }
@@ -505,6 +523,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
  }
 }
 void SerenityEditor::mouseDrag(const juce::MouseEvent& e){
+ if(drawingCustom){drawCustomPoint(logical(e.position));return;}
  if(sequenceDragLane>=0){editSequenceAt(logical(e.position),sequenceDragLane);return;}
  if(draggedParameter<0)return;
  const auto &spec=serenity::specs[(size_t)draggedParameter];
@@ -513,7 +532,7 @@ void SerenityEditor::mouseDrag(const juce::MouseEvent& e){
  synth.setValue(draggedParameter,juce::jlimit(spec.lo,spec.hi,startValue+change));
  showStatus(juce::String(spec.id)+" : "+juce::String(synth.getValue(draggedParameter),3));
 }
-void SerenityEditor::mouseUp(const juce::MouseEvent&){draggedParameter=-1;sequenceDragLane=-1;}
+void SerenityEditor::mouseUp(const juce::MouseEvent&){draggedParameter=-1;sequenceDragLane=-1;drawingCustom=false;customDrawLastSample=-1;}
 void SerenityEditor::mouseDoubleClick(const juce::MouseEvent& e){
  int index=paramAt(logical(e.position));
  if(index>=0){synth.setValue(index,serenity::specs[(size_t)index].initial);
