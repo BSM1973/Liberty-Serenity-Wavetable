@@ -41,6 +41,16 @@ int main(){
   smoothWave[(size_t)i]=.73f*std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
  processor.commitCustomFrame(0,4,smoothWave);
  processor.setCustomPoint(1,7,511,-.37f);
+ std::array<float,serenity::editableSamples> quietSine{};
+ for(int i=0;i<serenity::editableSamples;i++)
+  quietSine[(size_t)i]=.28f*std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
+ processor.commitCustomFrame(2,3,quietSine);
+ processor.setCustomHarmonic(2,3,5,.21f);
+ const auto partials=processor.getCustomHarmonics(2,3);
+ if(std::abs(partials[4]-.21f)>.025f){
+   std::cerr<<"ERROR: FFT harmonic editor did not update real wavetable samples"<<std::endl;
+   return 26;
+ }
  audio.clear();
  midi.clear();
  midi.addEvent(juce::MidiMessage::noteOn(1,72,(juce::uint8)110),0);
@@ -73,6 +83,10 @@ int main(){
     (int)std::lround(restored.getValue(serenity::oscAWave))!=serenity::waveCount){
    std::cerr<<"ERROR: user wavetable frames did not survive project save/load"<<std::endl;
    return 25;
+ }
+ if(std::abs(restored.getCustomHarmonics(2,3)[4]-.21f)>.025f){
+   std::cerr<<"ERROR: FFT harmonic editing lost after preset/project reload"<<std::endl;
+   return 27;
  }
  processor.setSequenceMode(0);
  auto editor=std::make_unique<SerenityEditor>(processor);
