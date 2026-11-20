@@ -196,10 +196,10 @@ public:
         state.setProperty("selectedPreset",selectedPreset.load(),nullptr);
         for(int i=0;i<serenity::parameterCount;++i)
             state.setProperty("cc"+juce::String(i),mappings[(size_t)i].load(),nullptr);
-        if (auto xml=state.createXml()) juce::copyXmlToBinary(*xml,dest);
+        if (auto xml=state.createXml()) copyXmlToBinary(*xml,dest);
     }
     void setStateInformation(const void* data,int length) override {
-        auto xml=juce::getXmlFromBinary(data,length);
+        auto xml=getXmlFromBinary(data,length);
         if (!xml) return;
         const auto state=juce::ValueTree::fromXml(*xml);
         if (!state.isValid()) return;
@@ -343,7 +343,7 @@ public:
             auto label=std::make_unique<juce::Label>();
             label->setJustificationType(juce::Justification::centred);
             label->setColour(juce::Label::textColourId,juce::Colour(0xffb5c1d2));
-            label->setFont(juce::Font(12.0f));
+            label->setFont(juce::Font(juce::FontOptions(12.0f)));
             label->setText(juce::String(serenity::definitions[(size_t)i].id),juce::dontSendNotification);
             addAndMakeVisible(*label);
             names[(size_t)i]=std::move(label);
@@ -364,7 +364,7 @@ public:
         addAndMakeVisible(midi);
         addAndMakeVisible(hint);
         hint.setJustificationType(juce::Justification::centredLeft);
-        hint.setFont(juce::Font(13.f));
+        hint.setFont(juce::Font(juce::FontOptions(13.f)));
         hint.setColour(juce::Label::textColourId,juce::Colour(0xffb9c5d7));
         refresh();
         startTimerHz(5);
