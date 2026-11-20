@@ -36,7 +36,10 @@ int main(){
  // Verify the custom wavetable is a real audio generator, not a static UI drawing.
  processor.setSequenceMode(0);
  processor.setValue(serenity::oscAWave,(float)serenity::waveCount);
- processor.setCustomPoint(0,4,21,.73f);
+ std::array<float,serenity::editableSamples> smoothWave{};
+ for(int i=0;i<serenity::editableSamples;i++)
+  smoothWave[(size_t)i]=.73f*std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
+ processor.commitCustomFrame(0,4,smoothWave);
  processor.setCustomPoint(1,7,511,-.37f);
  audio.clear();
  midi.clear();
@@ -65,7 +68,7 @@ int main(){
   std::cerr<<"ERROR: Sequencer state did not survive project reload"<<std::endl;
   return 22;
  }
- if(std::abs(restored.getCustomPoint(0,4,21)-.73f)>.00001f ||
+ if(std::abs(restored.getCustomPoint(0,4,128)-.73f)>.00001f ||
     std::abs(restored.getCustomPoint(1,7,511)+.37f)>.00001f ||
     (int)std::lround(restored.getValue(serenity::oscAWave))!=serenity::waveCount){
    std::cerr<<"ERROR: user wavetable frames did not survive project save/load"<<std::endl;
