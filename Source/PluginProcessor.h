@@ -62,6 +62,22 @@ public:
  void setRoute(int slot,serenity::ModRoute next) noexcept;
  bool isFavorite(int preset) const noexcept;
  void toggleFavorite(int preset) noexcept;
+ // The sequencer uses atomics in the editor, copied into a fixed-size DSP snapshot per block.
+ serenity::SequenceStep getSequenceStep(int bank,int index) const noexcept;
+ void setSequenceStep(int bank,int index,serenity::SequenceStep step) noexcept;
+ void setSequenceMode(int mode) noexcept;
+ int getSequenceMode() const noexcept {return sequenceMode.load();}
+ int getSequenceBank() const noexcept {return sequenceBank.load();}
+ void setSequenceBank(int bank) noexcept {sequenceBank.store(juce::jlimit(0,3,bank));}
+ int getSequenceLength() const noexcept {return sequenceLength.load();}
+ void setSequenceLength(int length) noexcept {sequenceLength.store(juce::jlimit(1,64,length));}
+ int getSequenceRate() const noexcept {return sequenceRate.load();}
+ void setSequenceRate(int rate) noexcept;
+ float getSequenceGate() const noexcept {return sequenceGate.load();}
+ void setSequenceGate(float gate) noexcept {sequenceGate.store(juce::jlimit(0.f,1.f,gate));}
+ float getSequenceSwing() const noexcept {return sequenceSwing.load();}
+ void setSequenceSwing(float swing) noexcept {sequenceSwing.store(juce::jlimit(0.f,.5f,swing));}
+ int getSequencePlayingStep() const noexcept {return sequencePlayingStep.load();}
  static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 private:
  serenity::Engine engine;
@@ -73,6 +89,10 @@ private:
  std::array<std::atomic<int>,64> modSources{},modDestinations{};
  std::array<std::atomic<float>,64> modAmounts{};
  std::array<std::atomic<bool>,100> favorites{};
+ std::array<std::array<std::atomic<int>,serenity::sequenceMaxSteps>,serenity::sequenceBanks> sequencePitch{};
+ std::array<std::array<std::atomic<float>,serenity::sequenceMaxSteps>,serenity::sequenceBanks> sequenceVelocity{},sequenceModulation{};
+ std::atomic<int> sequenceMode{0},sequenceBank{0},sequenceLength{8},sequenceRate{16},sequencePlayingStep{-1};
+ std::atomic<float> sequenceGate{.60f},sequenceSwing{0.f};
  serenity::Params buildParams() const noexcept;
  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SerenityAudioProcessor)
 };
