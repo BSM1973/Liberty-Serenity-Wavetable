@@ -587,8 +587,8 @@ void SerenityEditor::paintSequencer(juce::Graphics& g) {
     g.setColour(gold.withAlpha(.9f));
     g.drawRoundedRectangle(scaleRect(drawX-3.f,top+3.f,width+6.f,bottom-top-6.f),3.f,1.4f);
    }
-   if(type==0 && active) drawText(g,juce::String(step.pitch),drawX+12,y-22.f,48,20,muted,11);
-   if(type==2) drawText(g,juce::String(index+1),center-12,bottom+2,30,18,muted,10);
+   if(type==0 && active)
+    drawText(g,(step.pitch>0?"+":"")+juce::String(step.pitch),drawX+12,y-22.f,48,20,muted,11);
   }
   if(length<=first) {
    g.setColour(dim.withAlpha(.55f));g.fillRect(area);
@@ -596,17 +596,36 @@ void SerenityEditor::paintSequencer(juce::Graphics& g) {
  };
  if(arp){
   drawLane(365.f,622.f,494.f,0);
-  drawText(g,tr("ARP : ","ARP: ")+juce::String(length)+
-          juce::String::fromUTF8(" · ")+juce::String(synth.getSequenceRate())+"th",76,335,355,25,aqua,12,true);
+  // A live note-name/step-number strip replaces the frozen labels in the reference image.
+  // It does not overlap the instructional text at the top of the original plot.
+  g.setColour(ink);g.fillRect(scaleRect(76,623,1388,52));
+  static const char* pitchNames[]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+  for(int i=0;i<16;i++){
+   const int index=first+i;
+   const auto step=synth.getSequenceStep(bank,index);
+   const int midi=juce::jlimit(0,127,60+step.pitch);
+   const float x=xStart+cell*i+cell*.5f;
+   const juce::Colour color=index<length?muted:dim;
+   drawText(g,juce::String(pitchNames[midi%12])+juce::String(midi/12-1),
+            x-23,626,46,19,color,10);
+   drawText(g,juce::String(index+1),x-9,651,26,17,color,10);
+  }
  }else{
   drawLane(326.f,440.f,385.f,0);
   drawLane(519.f,607.f,603.f,1);
   drawLane(705.f,796.f,751.f,2);
   drawText(g,tr("BANQUE ","BANK ")+juce::String(bank+1)+
-           juce::String::fromUTF8(" · ")+juce::String(length)+tr(" PAS"," STEPS"),
-           1107,164,176,24,violet,12,true);
+           juce::String::fromUTF8(" · ")+juce::String(length)+tr(" PAS"," STEPS")+
+           " ("+juce::String(sequencePage+1)+"/4)",
+           1040,164,210,24,violet,11,true);
+  if(sequencePage>0){
+   // Only future pages replace the screenshot's static step numbers.
+   g.setColour(ink);g.fillRect(scaleRect(75,798,1390,27));
+   for(int i=0;i<16;i++)
+    drawText(g,juce::String(first+i+1),xStart+cell*i+cell*.5f-13.f,803,30,18,muted,10);
+  }
  }
- drawText(g,juce::String(sequencePage+1)+"/4",1396,800,60,22,gold,12,true);
+ if(arp)drawText(g,juce::String(sequencePage+1)+"/4",1396,800,60,22,gold,12,true);
  if(enabled){
   const auto label=arp?tr("ARP : ACTIVÉ","ARP: ON"):tr("SEQ : ACTIVÉ","SEQ: ON");
   g.setColour(juce::Colour(0xff12404b));
