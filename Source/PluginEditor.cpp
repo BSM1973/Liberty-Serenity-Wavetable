@@ -597,13 +597,13 @@ void SerenityEditor::paintSequencer(juce::Graphics& g) {
  if(arp){
   drawLane(365.f,622.f,494.f,0);
   drawText(g,tr("ARP : ","ARP: ")+juce::String(length)+
-          " · "+juce::String(synth.getSequenceRate())+"th",76,335,355,25,aqua,12,true);
+          juce::String::fromUTF8(" · ")+juce::String(synth.getSequenceRate())+"th",76,335,355,25,aqua,12,true);
  }else{
   drawLane(326.f,440.f,385.f,0);
   drawLane(519.f,607.f,603.f,1);
   drawLane(705.f,796.f,751.f,2);
   drawText(g,tr("BANQUE ","BANK ")+juce::String(bank+1)+
-           " · "+juce::String(length)+tr(" PAS"," STEPS"),
+           juce::String::fromUTF8(" · ")+juce::String(length)+tr(" PAS"," STEPS"),
            1107,164,176,24,violet,12,true);
  }
  drawText(g,juce::String(sequencePage+1)+"/4",1396,800,60,22,gold,12,true);
