@@ -542,7 +542,14 @@ void SerenityEditor::mouseDrag(const juce::MouseEvent& e){
  synth.setValue(draggedParameter,juce::jlimit(spec.lo,spec.hi,startValue+change));
  showStatus(juce::String(spec.id)+" : "+juce::String(synth.getValue(draggedParameter),3));
 }
-void SerenityEditor::mouseUp(const juce::MouseEvent&){draggedParameter=-1;sequenceDragLane=-1;drawingCustom=false;drawingHarmonic=false;customDrawLastSample=-1;}
+void SerenityEditor::mouseUp(const juce::MouseEvent&){
+ if(drawingCustom) synth.rebuildCustomFrame(selectedOsc,selectedCustomFrame);
+ draggedParameter=-1;
+ sequenceDragLane=-1;
+ drawingCustom=false;
+ drawingHarmonic=false;
+ customDrawLastSample=-1;
+}
 void SerenityEditor::mouseDoubleClick(const juce::MouseEvent& e){
  int index=paramAt(logical(e.position));
  if(index>=0){synth.setValue(index,serenity::specs[(size_t)index].initial);
