@@ -423,6 +423,15 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
              (enabled?" OFF":" ON"));return;
  }
  if(tab==1){
+  // Use the original HARMONICS panel for additive spectral editing.
+  if(p.x>=1171&&p.x<=1468&&p.y>=161&&p.y<=374){
+   if(e.mods.isRightButtonDown()){showWavetableMenu();return;}
+   if(e.mods.isLeftButtonDown()){
+    synth.setValue(serenity::oscAWave+selectedOsc,(float)serenity::waveCount);
+    drawingHarmonic=true;drawCustomHarmonic(p);
+   }
+   return;
+  }
   // OUTPUT WAVEFORM is edited in place, exactly within the original drawing pane.
   if(p.x>=1168&&p.x<=1472&&p.y>=465&&p.y<=611) {
    if(e.mods.isRightButtonDown()){showWavetableMenu();return;}
@@ -523,6 +532,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
  }
 }
 void SerenityEditor::mouseDrag(const juce::MouseEvent& e){
+ if(drawingHarmonic){drawCustomHarmonic(logical(e.position));return;}
  if(drawingCustom){drawCustomPoint(logical(e.position));return;}
  if(sequenceDragLane>=0){editSequenceAt(logical(e.position),sequenceDragLane);return;}
  if(draggedParameter<0)return;
@@ -532,7 +542,7 @@ void SerenityEditor::mouseDrag(const juce::MouseEvent& e){
  synth.setValue(draggedParameter,juce::jlimit(spec.lo,spec.hi,startValue+change));
  showStatus(juce::String(spec.id)+" : "+juce::String(synth.getValue(draggedParameter),3));
 }
-void SerenityEditor::mouseUp(const juce::MouseEvent&){draggedParameter=-1;sequenceDragLane=-1;drawingCustom=false;customDrawLastSample=-1;}
+void SerenityEditor::mouseUp(const juce::MouseEvent&){draggedParameter=-1;sequenceDragLane=-1;drawingCustom=false;drawingHarmonic=false;customDrawLastSample=-1;}
 void SerenityEditor::mouseDoubleClick(const juce::MouseEvent& e){
  int index=paramAt(logical(e.position));
  if(index>=0){synth.setValue(index,serenity::specs[(size_t)index].initial);
@@ -854,6 +864,7 @@ void SerenityEditor::paintCustomWaveform(juce::Graphics& g){
  g.setColour(waveform);
  g.strokePath(wave,juce::PathStrokeType(2.0f));
  drawText(g,tr("TABLE PERSONNALISÉE","CUSTOM TABLE"),1191,443,228,19,gold,11,true);
+ paintCustomHarmonics(g);
 }
 
 void SerenityEditor::importWavetableAudio(){
@@ -919,6 +930,18 @@ void SerenityEditor::showWavetableMenu(){
  menu.addItem(5,tr("Dupliquer vers l'image suivante","Duplicate to next frame"));
  menu.addItem(6,tr("Réinitialiser cette image","Reset this frame"));
  menu.addItem(7,tr("Exporter les huit images en WAV...","Export eight frames as WAV..."));
+ juce::PopupMenu spectra;
+ spectra.addItem(10,tr("Filtre spectral : 16 harmoniques","Spectral filter: 16 harmonics"));
+ spectra.addItem(11,tr("Filtre spectral : 32 harmoniques","Spectral filter: 32 harmonics"));
+ spectra.addItem(12,tr("Fondamentale seule","Fundamental only"));
+ spectra.addItem(13,tr("Harmoniques impaires","Odd harmonics"));
+ spectra.addItem(14,tr("Harmoniques paires","Even harmonics"));
+ spectra.addItem(15,tr("Supprimer les 4 premières harmoniques","Remove first four harmonics"));
+ spectra.addItem(16,tr("Rotation de phase : +90 degrés","Rotate spectral phase by +90 degrees"));
+ spectra.addItem(17,tr("Lissage spectral : 64 harmoniques","Spectral smoothing: 64 harmonics"));
+ spectra.addSeparator();
+ spectra.addItem(18,tr("Morphing des images 1 à 8","Morph frames 1 to 8"));
+ menu.addSubMenu(tr("TRAITEMENTS SPECTRAUX","SPECTRAL PROCESSING"),spectra);
  const int osc=selectedOsc,frame=selectedCustomFrame;
  juce::Component::SafePointer<SerenityEditor> safe(this);
  menu.showMenuAsync(juce::PopupMenu::Options(),[safe,osc,frame](int choice){
@@ -962,10 +985,61 @@ void SerenityEditor::showWavetableMenu(){
    case 4: safe->synth.removeCustomDc(osc,frame);break;
    case 5: safe->synth.copyCustomFrame(osc,frame,(frame+1)%serenity::editableFrames);break;
    case 6: safe->synth.resetCustomFrame(osc,frame);break;
+   case 10:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::lowPass16);break;
+   case 11:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::lowPass32);break;
+   case 12:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::fundamental);break;
+   case 13:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::oddOnly);break;
+   case 14:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::evenOnly);break;
+   case 15:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::highPass4);break;
+   case 16:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::phaseQuarterTurn);break;
+   case 17:safe->synth.transformCustomFrame(osc,frame,serenity::spectral::Transform::smooth64);break;
+   case 18:safe->synth.morphCustomFrames(osc,0,7);break;
    default:return;
   }
   safe->synth.setValue(serenity::oscAWave+osc,(float)serenity::waveCount);
   safe->customEditorTouched=true;
   safe->repaint();
  });
+}
+
+
+void SerenityEditor::drawCustomHarmonic(juce::Point<float> p){
+ constexpr float left=1174.f,right=1466.f,top=165.f,bottom=371.f;
+ const int harmonic=juce::jlimit(1,serenity::spectral::displayedHarmonics,
+    1+(int)((juce::jlimit(left,right,p.x)-left)/
+      ((right-left)/serenity::spectral::displayedHarmonics)));
+ const float amount=juce::jlimit(0.f,1.f,(bottom-juce::jlimit(top,bottom,p.y))/(bottom-top));
+ selectedHarmonic=harmonic;
+ synth.setCustomHarmonic(selectedOsc,selectedCustomFrame,harmonic,amount);
+ customEditorTouched=true;
+ repaint();
+}
+void SerenityEditor::paintCustomHarmonics(juce::Graphics& g){
+ constexpr int count=serenity::spectral::displayedHarmonics;
+ const float left=1173.f,right=1467.f,top=159.f,bottom=373.f;
+ const float width=(right-left)/count;
+ const auto spectrum=synth.getCustomHarmonics(selectedOsc,selectedCustomFrame);
+ const auto background=juce::Colour(0xff0b121d);
+ const auto grid=juce::Colour(0xff243144);
+ const auto cyan=juce::Colour(0xff71d8e7);
+ g.setColour(background);
+ g.fillRoundedRectangle(scaleRect(left-2,top-2,right-left+4,bottom-top+4),4.f);
+ for(int k=0;k<=4;k++){
+  const float y=bottom-(bottom-top)*(float)k/4.f;
+  auto bounds=scaleRect(left,y,right-left,0);
+  g.setColour(grid);
+  g.drawHorizontalLine((int)std::round(bounds.getY()),bounds.getX(),bounds.getRight());
+ }
+ for(int i=0;i<count;i++){
+  const float amplitude=juce::jlimit(0.f,1.f,spectrum[(size_t)i]);
+  const float h=(bottom-top-8.f)*amplitude;
+  const float x=left+i*width+width*.18f;
+  const float y=bottom-std::max(1.5f,h);
+  g.setColour(i+1==selectedHarmonic?gold:cyan);
+  g.fillRoundedRectangle(scaleRect(x,y,width*.65f,std::max(1.5f,h)),1.4f);
+ }
+ for(int n:{1,8,16,24,32}) {
+  const float x=left+(n-.5f)*width;
+  drawText(g,juce::String(n),x-12.f,376,30,15,juce::Colour(0xff91a7c1),10.f);
+ }
 }
