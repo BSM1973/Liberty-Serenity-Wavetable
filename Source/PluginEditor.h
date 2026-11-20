@@ -28,6 +28,9 @@ private:
  int tab=0,category=0,listOffset=0,matrixPage=0,selectedParameter=-1;
  int draggedParameter=-1,selectedOsc=0;
  int sequencePage=0,sequenceDragLane=-1;
+ int selectedCustomFrame=4,customDrawLastSample=-1;
+ float customDrawLastValue=0.f;
+ bool drawingCustom=false,customEditorTouched=false;
  bool sequenceTouched=false;
  float startValue=0;
  juce::Point<float> downPos;
@@ -43,6 +46,10 @@ private:
  void paintMatrix(juce::Graphics&);
  void paintOscillators(juce::Graphics&);
  void paintEditor(juce::Graphics&);
+ void showWavetableMenu();
+ void importWavetableAudio();
+ void drawCustomPoint(juce::Point<float> p);
+ void paintCustomWaveform(juce::Graphics& g);
  void paintSequencer(juce::Graphics&);
  bool editSequenceAt(juce::Point<float>,int lane);
  bool sequenceClick(juce::Point<float>);
