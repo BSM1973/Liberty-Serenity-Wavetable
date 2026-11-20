@@ -771,3 +771,192 @@ bool SerenityEditor::sequenceClick(juce::Point<float> p) {
  }
  return false;
 }
+
+
+// Wavetable drawing and operations live in the existing 2D/3D editor panels.
+// The ten original skin images remain unchanged.
+void SerenityEditor::drawCustomPoint(juce::Point<float> p){
+ const int point=juce::jlimit(0,serenity::editableSamples-1,
+  (int)std::lround((p.x-1171.f)/296.f*(serenity::editableSamples-1)));
+ const float value=juce::jlimit(-1.f,1.f,(538.f-p.y)/66.f);
+ if(customDrawLastSample<0){
+  synth.setCustomPoint(selectedOsc,selectedCustomFrame,point,value);
+ }else{
+  const int start=customDrawLastSample,stop=point;
+  const int steps=std::abs(stop-start);
+  if(steps==0)synth.setCustomPoint(selectedOsc,selectedCustomFrame,point,value);
+  else for(int n=0;n<=steps;n++){
+   const float t=(float)n/steps;
+   const int index=start+(int)std::lround((stop-start)*t);
+   synth.setCustomPoint(selectedOsc,selectedCustomFrame,index,
+      customDrawLastValue+(value-customDrawLastValue)*t);
+  }
+ }
+ customDrawLastSample=point;customDrawLastValue=value;
+ customEditorTouched=true;
+ repaint();
+}
+
+void SerenityEditor::paintCustomWaveform(juce::Graphics& g){
+ const int waves[]={serenity::oscAWave,serenity::oscBWave,serenity::oscCWave,serenity::oscDWave};
+ if((int)std::lround(synth.getValue(waves[selectedOsc]))!=serenity::waveCount)return;
+ const auto background=juce::Colour(0xff0b121d);
+ const auto waveform=juce::Colour(0xff74deec);
+ // Draw the editable 3D preview within the original central graph, not over labels/knobs.
+ g.setColour(background);g.fillRoundedRectangle(scaleRect(485,201,646,365),5.f);
+ for(int frame=7;frame>=0;frame--){
+  juce::Path path;
+  const float left=505.f+frame*7.0f;
+  const float right=1102.f+frame*1.8f;
+  const float baseline=485.f-frame*31.f;
+  for(int i=0;i<=192;i++){
+   const int sample=juce::jlimit(0,511,(int)std::lround((float)i/192.f*511.f));
+   const float x=left+(right-left)*(float)i/192.f;
+   const float y=baseline-synth.getCustomPoint(selectedOsc,frame,sample)*48.f;
+   auto rect=scaleRect(x,y,0,0);
+   if(i==0)path.startNewSubPath(rect.getX(),rect.getY());
+   else path.lineTo(rect.getX(),rect.getY());
+  }
+  g.setColour(frame==selectedCustomFrame?juce::Colour(0xffe0c278):
+               waveform.withAlpha(.30f+.06f*(float)(8-frame)));
+  g.strokePath(path,juce::PathStrokeType(frame==selectedCustomFrame?2.2f:1.4f));
+ }
+ // Eight original frame buttons stay in exactly the same position.
+ g.setColour(gold);
+ g.drawRoundedRectangle(scaleRect(463+selectedCustomFrame*84.f,599,79,66),5.f,2.f);
+ // Paint only INSIDE the existing OUTPUT WAVEFORM graph.
+ g.setColour(background);
+ g.fillRoundedRectangle(scaleRect(1169,463,299,142),3.f);
+ for(int q=0;q<5;q++){
+  const float y=466.f+q*34.f;
+  auto a=scaleRect(1170,y,0,0);
+  g.setColour(juce::Colour(0xff263447));
+  g.drawHorizontalLine((int)std::lround(a.getY()),scaleRect(1172,0,0,0).getX(),
+                       scaleRect(1465,0,0,0).getX());
+ }
+ juce::Path wave;
+ for(int i=0;i<serenity::editableSamples;i++){
+  const float x=1171.f+296.f*(float)i/(serenity::editableSamples-1);
+  const float y=538.f-66.f*synth.getCustomPoint(selectedOsc,selectedCustomFrame,i);
+  auto q=scaleRect(x,y,0,0);
+  if(i==0)wave.startNewSubPath(q.getX(),q.getY());
+  else wave.lineTo(q.getX(),q.getY());
+ }
+ g.setColour(waveform);
+ g.strokePath(wave,juce::PathStrokeType(2.0f));
+ drawText(g,tr("TABLE PERSONNALISÉE","CUSTOM TABLE"),1191,443,228,19,gold,11,true);
+}
+
+void SerenityEditor::importWavetableAudio(){
+ fileChooser=std::make_unique<juce::FileChooser>(
+  tr("Importer un fichier WAV dans la table","Import WAV into wavetable"),
+  juce::File{},"*.wav");
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ const int osc=selectedOsc;
+ fileChooser->launchAsync(juce::FileBrowserComponent::openMode|
+                          juce::FileBrowserComponent::canSelectFiles,
+  [safe,osc](const juce::FileChooser& chooser){
+   if(!safe)return;
+   const auto file=chooser.getResult();
+   if(file==juce::File{})return;
+   juce::AudioFormatManager manager;manager.registerBasicFormats();
+   std::unique_ptr<juce::AudioFormatReader> reader(manager.createReaderFor(file));
+   if(!reader||reader->lengthInSamples<2){
+    safe->showStatus(safe->tr("Import WAV impossible.","Cannot import WAV."));return;
+   }
+   // Fixed memory limit for untrusted large samples; this is UI-thread work.
+   const int count=(int)juce::jmin((juce::int64)2000000,reader->lengthInSamples);
+   juce::AudioBuffer<float> source(2,count);
+   source.clear();
+   if(!reader->read(&source,0,count,0,true,true)){
+    safe->showStatus(safe->tr("Échec de la lecture WAV.","WAV read failed."));return;
+   }
+   const int sourceChannels=juce::jlimit(1,2,(int)reader->numChannels);
+   std::array<float,serenity::editableSamples> points{};
+   for(int frame=0;frame<serenity::editableFrames;frame++){
+    const bool separate=count>=serenity::editableFrames*serenity::editableSamples;
+    const int segmentLength=separate?(count/serenity::editableFrames):count;
+    const int segmentStart=separate?frame*segmentLength:0;
+    for(int i=0;i<serenity::editableSamples;i++){
+     const double offset=(double)i*(segmentLength-1)/(serenity::editableSamples-1);
+     const int a=segmentStart+(int)offset;
+     const int b=std::min(segmentStart+segmentLength-1,a+1);
+     const float blend=(float)(offset-std::floor(offset));
+     const float left=source.getSample(0,a)*(1.f-blend)+source.getSample(0,b)*blend;
+     float value=left;
+     if(sourceChannels>=2){
+      const float right=source.getSample(1,a)*(1.f-blend)+source.getSample(1,b)*blend;
+      value=.5f*(left+right);
+     }
+     points[(size_t)i]=juce::jlimit(-1.f,1.f,value);
+    }
+    safe->synth.commitCustomFrame(osc,frame,points);
+   }
+   safe->synth.setValue(serenity::oscAWave+osc,(float)serenity::waveCount);
+   safe->customEditorTouched=true;
+   safe->showStatus(safe->tr("WAV importé : 8 images éditables.",
+                             "WAV imported: 8 editable frames."));
+   safe->repaint();
+  });
+}
+
+void SerenityEditor::showWavetableMenu(){
+ juce::PopupMenu menu;
+ menu.addSectionHeader(tr("ÉDITION WAVETABLE","WAVETABLE EDITING"));
+ menu.addItem(1,tr("Importer un fichier WAV...","Import WAV file..."));
+ menu.addItem(2,tr("Activer la table personnalisée","Use custom wavetable"));
+ menu.addItem(3,tr("Normaliser l'image sélectionnée","Normalize selected frame"));
+ menu.addItem(4,tr("Supprimer l'offset continu","Remove DC offset"));
+ menu.addItem(5,tr("Dupliquer vers l'image suivante","Duplicate to next frame"));
+ menu.addItem(6,tr("Réinitialiser cette image","Reset this frame"));
+ menu.addItem(7,tr("Exporter les huit images en WAV...","Export eight frames as WAV..."));
+ const int osc=selectedOsc,frame=selectedCustomFrame;
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ menu.showMenuAsync(juce::PopupMenu::Options(),[safe,osc,frame](int choice){
+  if(!safe||choice<=0)return;
+  if(choice==1){safe->importWavetableAudio();return;}
+  if(choice==7){
+   safe->fileChooser=std::make_unique<juce::FileChooser>(
+    safe->tr("Exporter ma wavetable","Export custom wavetable"),
+    juce::File{},"*.wav");
+   juce::Component::SafePointer<SerenityEditor> nested(safe);
+   safe->fileChooser->launchAsync(
+    juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::canSelectFiles,
+    [nested,osc](const juce::FileChooser& chooser){
+     if(!nested)return;
+     juce::File file=chooser.getResult();
+     if(file==juce::File{})return;
+     if(file.getFileExtension().isEmpty())file=file.withFileExtension(".wav");
+     std::vector<unsigned char> bytes;
+     bytes.reserve(44+serenity::editableFrames*serenity::editableSamples*2);
+     auto push16=[&bytes](int x){bytes.push_back((unsigned char)(x&255));bytes.push_back((unsigned char)((x>>8)&255));};
+     auto push32=[&bytes](unsigned x){for(int k=0;k<4;k++)bytes.push_back((unsigned char)((x>>(k*8))&255));};
+     auto label=[&bytes](const char* s){for(int k=0;k<4;k++)bytes.push_back((unsigned char)s[k]);};
+     const unsigned frames=serenity::editableFrames*serenity::editableSamples;
+     label("RIFF");push32(36+frames*2);label("WAVE");
+     label("fmt ");push32(16);push16(1);push16(1);push32(44100);push32(88200);push16(2);push16(16);
+     label("data");push32(frames*2);
+     for(int frame=0;frame<serenity::editableFrames;frame++)
+      for(int i=0;i<serenity::editableSamples;i++){
+       const float v=nested->synth.getCustomPoint(osc,frame,i);
+       push16((int)(short)juce::jlimit(-32768,32767,(int)std::lround(v*32767.f)));
+      }
+     if(file.replaceWithData(bytes.data(),bytes.size()))
+      nested->showStatus(nested->tr("Wavetable WAV exportée.","Wavetable WAV exported."));
+     else nested->showStatus(nested->tr("Échec de l'export WAV.","WAV export failed."));
+    });
+   return;
+  }
+  switch(choice){
+   case 2: break;
+   case 3: safe->synth.normalizeCustomFrame(osc,frame);break;
+   case 4: safe->synth.removeCustomDc(osc,frame);break;
+   case 5: safe->synth.copyCustomFrame(osc,frame,(frame+1)%serenity::editableFrames);break;
+   case 6: safe->synth.resetCustomFrame(osc,frame);break;
+   default:return;
+  }
+  safe->synth.setValue(serenity::oscAWave+osc,(float)serenity::waveCount);
+  safe->customEditorTouched=true;
+  safe->repaint();
+ });
+}
