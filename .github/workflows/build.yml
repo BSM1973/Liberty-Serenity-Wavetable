@@ -38,6 +38,10 @@ jobs:
         shell: bash
         run: cmake --build build --config Release --parallel 4
 
+      - name: Test actual editor startup and ten-page navigation
+        shell: bash
+        run: ctest --test-dir build -C Release --output-on-failure --timeout 60
+
       - name: Verify built plugin folders
         shell: bash
         run: |
