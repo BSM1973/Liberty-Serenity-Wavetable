@@ -48,6 +48,15 @@ public:
  float getValue(int index) const noexcept;
  void setValue(int index,float physicalValue);
  void applyPreset(int index);
+ // Editable per-oscillator frames. GUI commits are atomic; DSP takes a consistent
+ // bounded snapshot at audio block boundaries without heap allocations.
+ void setCustomPoint(int oscillator,int frame,int sample,float value) noexcept;
+ float getCustomPoint(int oscillator,int frame,int sample) const noexcept;
+ void commitCustomFrame(int oscillator,int frame,const std::array<float,serenity::editableSamples>& points) noexcept;
+ void normalizeCustomFrame(int oscillator,int frame) noexcept;
+ void removeCustomDc(int oscillator,int frame) noexcept;
+ void copyCustomFrame(int oscillator,int from,int to) noexcept;
+ void resetCustomFrame(int oscillator,int frame) noexcept;
  void armMidiLearn(int parameter) noexcept;
  void clearMapping(int parameter) noexcept;
  int mappedCC(int parameter) const noexcept;
@@ -81,6 +90,9 @@ public:
  static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 private:
  serenity::Engine engine;
+ std::array<std::atomic<float>,serenity::editableTotal> customPoints{};
+ std::atomic<unsigned> customRevision{1};
+ unsigned appliedCustomRevision=0;
  std::array<std::atomic<int>,serenity::parameterCount> controller{};
  std::array<std::atomic<float>,serenity::parameterCount> midiOverride{};
  std::atomic<int> learnTarget{-1},lastCC{-1},selectedPreset{0},voiceCount{0};
