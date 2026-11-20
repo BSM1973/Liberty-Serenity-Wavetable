@@ -13,7 +13,7 @@ import urllib.request
 import zipfile
 
 BASE = "https://cdn.shopify.com/s/files/1/1114/8047/1891/files/"
-SOURCE_URL = BASE + "serenity-ui-source-transfer-v020.png?v=1795191465"
+SOURCE_URL = BASE + "serenity-ui-source-transfer-v020.png?v=1795191465&format=png"
 SOURCE_SHA256 = "5754337ee53086c2af74c94fe3087a3c2267b8099e793a16da4c1f1ff4f7a6d4"
 MAGIC = b"LIBERTY_UI_SOURCE_02"
 ASSETS = {
@@ -71,7 +71,7 @@ def main():
     assetdir = root / "Assets" / "UI"
     assetdir.mkdir(parents=True, exist_ok=True)
     for page, (stamp, expected_hash) in ASSETS.items():
-        url = BASE + "serenity-ui-reference-" + page + ".png?v=" + stamp
+        url = BASE + "serenity-ui-reference-" + page + ".png?v=" + stamp + "&format=png"
         raw = fetch(url)
         reference = Image.open(BytesIO(raw)).convert("RGBA")
         actual_hash = hashlib.sha256(reference.tobytes()).hexdigest()
