@@ -37,3 +37,15 @@ target_link_libraries(SerenityWavetable PRIVATE
   juce::juce_dsp juce::juce_gui_extra
   PUBLIC juce::juce_recommended_config_flags
   juce::juce_recommended_warning_flags)
+
+# The startup regression test constructs the REAL editor used by all formats.
+include(CTest)
+if (BUILD_TESTING)
+  add_executable(serenity_editor_startup_smoke Tests/EditorStartupSmoke.cpp)
+  target_include_directories(serenity_editor_startup_smoke PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/SerenityWavetable_artefacts/JuceLibraryCode")
+  target_link_libraries(serenity_editor_startup_smoke PRIVATE
+    SerenityWavetable juce::juce_audio_utils)
+  add_test(NAME serenity_editor_startup_smoke COMMAND serenity_editor_startup_smoke)
+  set_tests_properties(serenity_editor_startup_smoke PROPERTIES TIMEOUT 60)
+endif()
