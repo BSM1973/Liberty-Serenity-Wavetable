@@ -59,12 +59,15 @@ int main(){
   return 11;
  }
  for(int tab=0;tab<10;++tab){
+  // Render actual sounding sequencer and arpeggiator states on original skins.
+  if(tab==5)processor.setSequenceMode(1);
+  if(tab==6)processor.setSequenceMode(2);
   editor->selectTabForSmokeTest(tab);
   auto snapshot=juce::Image(juce::Image::ARGB,editor->getWidth(),editor->getHeight(),true);
   juce::Graphics painter(snapshot);
   editor->paint(painter);
   if(snapshot.isNull()) return 12;
-  if(tab==0 || tab==1 || tab==8 || tab==9){
+  if(tab==0 || tab==1 || tab==5 || tab==6 || tab==8 || tab==9){
    auto destination=juce::File::getCurrentWorkingDirectory().getChildFile(
        juce::String("Serenity-UI-Preview-")+juce::String(tab)+".png");
    juce::PNGImageFormat png;
