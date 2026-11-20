@@ -44,6 +44,13 @@ SerenityAudioProcessor::SerenityAudioProcessor():
   modAmounts[(size_t)i].store(0);
  }
  for(auto &f:favorites)f.store(false);
+ const auto defaults=serenity::defaultSequence();
+ for(int b=0;b<serenity::sequenceBanks;b++)
+  for(int i=0;i<serenity::sequenceMaxSteps;i++) {
+   sequencePitch[(size_t)b][(size_t)i].store(defaults.steps[(size_t)i].pitch);
+   sequenceVelocity[(size_t)b][(size_t)i].store(defaults.steps[(size_t)i].velocity);
+   sequenceModulation[(size_t)b][(size_t)i].store(0.f);
+  }
 }
 bool SerenityAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const {
  return l.getMainOutputChannelSet()==juce::AudioChannelSet::stereo();
@@ -99,11 +106,47 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
  p.spread=serenity::clamp(p.spread+(getValue(serenity::macroWidth)-.5f)*.2f,0,1);
  return p;
 }
+
+serenity::SequenceStep SerenityAudioProcessor::getSequenceStep(int bank,int index) const noexcept {
+ if(bank<0||bank>=serenity::sequenceBanks||index<0||index>=serenity::sequenceMaxSteps) return {};
+ return {
+  sequencePitch[(size_t)bank][(size_t)index].load(std::memory_order_relaxed),
+  sequenceVelocity[(size_t)bank][(size_t)index].load(std::memory_order_relaxed),
+  sequenceModulation[(size_t)bank][(size_t)index].load(std::memory_order_relaxed)
+ };
+}
+void SerenityAudioProcessor::setSequenceStep(int bank,int index,serenity::SequenceStep step) noexcept {
+ if(bank<0||bank>=serenity::sequenceBanks||index<0||index>=serenity::sequenceMaxSteps)return;
+ sequencePitch[(size_t)bank][(size_t)index].store(juce::jlimit(-24,24,step.pitch),std::memory_order_relaxed);
+ sequenceVelocity[(size_t)bank][(size_t)index].store(juce::jlimit(0.f,1.f,step.velocity),std::memory_order_relaxed);
+ sequenceModulation[(size_t)bank][(size_t)index].store(juce::jlimit(-1.f,1.f,step.modulation),std::memory_order_relaxed);
+}
+void SerenityAudioProcessor::setSequenceMode(int mode) noexcept {
+ sequenceMode.store(juce::jlimit(0,2,mode),std::memory_order_relaxed);
+}
+void SerenityAudioProcessor::setSequenceRate(int rate) noexcept {
+ if(rate==4||rate==8||rate==16||rate==32)
+  sequenceRate.store(rate,std::memory_order_relaxed);
+}
 void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi){
  juce::ScopedNoDenormals noDenormals;
  buffer.clear();
  if(buffer.getNumChannels()<2)return;
  engine.setParams(buildParams());
+ serenity::SequencePattern sequence;
+ const int bank=sequenceBank.load(std::memory_order_relaxed);
+ for(int i=0;i<serenity::sequenceMaxSteps;i++)
+  sequence.steps[(size_t)i]=getSequenceStep(bank,i);
+ sequence.length=sequenceLength.load(std::memory_order_relaxed);
+ sequence.rate=sequenceRate.load(std::memory_order_relaxed);
+ sequence.gate=sequenceGate.load(std::memory_order_relaxed);
+ sequence.swing=sequenceSwing.load(std::memory_order_relaxed);
+ sequence.mode=sequenceMode.load(std::memory_order_relaxed);
+ if(auto* playhead=getPlayHead())
+  if(auto position=playhead->getPosition())
+   if(auto bpm=position->getBpm())
+    sequence.tempo=(float)*bpm;
+ engine.setSequence(sequence);
  for(int i=0;i<64;i++) engine.route((size_t)i)=getRoute(i);
  float *l=buffer.getWritePointer(0),*r=buffer.getWritePointer(1);
  int prev=0;
@@ -131,6 +174,7 @@ void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce:
  }
  engine.render(l+prev,r+prev,buffer.getNumSamples()-prev);
  voiceCount.store(engine.numVoices(),std::memory_order_relaxed);
+ sequencePlayingStep.store(engine.sequenceStep(),std::memory_order_relaxed);
  float peak=0;
  for(int n=0;n<buffer.getNumSamples();n++) peak=std::max(peak,std::max(std::abs(l[n]),std::abs(r[n])));
  outputMeter.store(peak,std::memory_order_relaxed);
@@ -206,6 +250,19 @@ void SerenityAudioProcessor::getStateInformation(juce::MemoryBlock& dest){
  juce::String fave;
  for(const auto& f:favorites)fave+=(f.load()?"1":"0");
  state.setProperty("favorites",fave,nullptr);
+ state.setProperty("sequenceMode",sequenceMode.load(),nullptr);
+ state.setProperty("sequenceBank",sequenceBank.load(),nullptr);
+ state.setProperty("sequenceLength",sequenceLength.load(),nullptr);
+ state.setProperty("sequenceRate",sequenceRate.load(),nullptr);
+ state.setProperty("sequenceGate",sequenceGate.load(),nullptr);
+ state.setProperty("sequenceSwing",sequenceSwing.load(),nullptr);
+ for(int b=0;b<serenity::sequenceBanks;b++)for(int i=0;i<serenity::sequenceMaxSteps;i++) {
+  const juce::String prefix="seq"+juce::String(b)+"_"+juce::String(i);
+  const auto step=getSequenceStep(b,i);
+  state.setProperty(prefix+"P",step.pitch,nullptr);
+  state.setProperty(prefix+"V",step.velocity,nullptr);
+  state.setProperty(prefix+"M",step.modulation,nullptr);
+ }
  if(auto xml=state.createXml())copyXmlToBinary(*xml,dest);
 }
 void SerenityAudioProcessor::setStateInformation(const void* data,int size){
@@ -225,6 +282,21 @@ void SerenityAudioProcessor::setStateInformation(const void* data,int size){
   });
   const auto fave=state.getProperty("favorites","").toString();
   for(int i=0;i<100;i++)favorites[(size_t)i].store(i<fave.length()&&fave[i]=='1');
+  setSequenceMode((int)state.getProperty("sequenceMode",0));
+  setSequenceBank((int)state.getProperty("sequenceBank",0));
+  setSequenceLength((int)state.getProperty("sequenceLength",8));
+  setSequenceRate((int)state.getProperty("sequenceRate",16));
+  setSequenceGate((float)state.getProperty("sequenceGate",.6f));
+  setSequenceSwing((float)state.getProperty("sequenceSwing",0.f));
+  for(int b=0;b<serenity::sequenceBanks;b++)for(int i=0;i<serenity::sequenceMaxSteps;i++) {
+   const juce::String prefix="seq"+juce::String(b)+"_"+juce::String(i);
+   const auto defaults=getSequenceStep(b,i);
+   setSequenceStep(b,i,{
+     (int)state.getProperty(prefix+"P",defaults.pitch),
+     (float)state.getProperty(prefix+"V",defaults.velocity),
+     (float)state.getProperty(prefix+"M",defaults.modulation)
+   });
+  }
   apvts.replaceState(state);
  }
 }
