@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "SerenitySequencer.h"
 
 namespace serenity {
 constexpr float pi=3.14159265358979323846f;
@@ -115,7 +116,7 @@ struct Envelope {
 };
 struct Voice {
  int note=-1;bool active=false;
- float velocity=0,filterL=0,filterR=0,filter2L=0,filter2R=0;
+ float velocity=0,stepGate=0,filterL=0,filterR=0,filter2L=0,filter2R=0;
  float filter3L=0,filter3R=0,filter4L=0,filter4R=0;
  Envelope amp;
  std::array<Envelope,6> envelopes{};
@@ -141,6 +142,7 @@ class Engine {
  std::array<Voice,maxVoices> voices{};
  std::array<ModRoute,64> routes{};
  float sr=48000, lfoPhase=0,modWheel=0;
+ StepClock sequence;
  uint64_t noteCounter=0;
  std::vector<float> delayL,delayR,reverbL,reverbR;
  size_t delayIndex=0, reverbIndex=0;
@@ -155,14 +157,17 @@ public:
  Engine()=default;
  void prepare(double sampleRate) {
   sr=(float)std::max(8000.0,sampleRate);
+  sequence.prepare(sampleRate);
   delayL.assign((size_t)(sr*2.0f)+1,0);delayR=delayL;
   reverbL.assign((size_t)(sr*.173f)+1,0);reverbR.assign((size_t)(sr*.193f)+1,0);
   delayIndex=reverbIndex=0;
   reset();
  }
- void reset() noexcept {for(auto &v:voices)v=Voice{};lfoPhase=0;activeCount=0;}
+ void reset() noexcept {for(auto &v:voices)v=Voice{};lfoPhase=0;activeCount=0;sequence.reset();}
  void setParams(const Params &next) noexcept {p=next;p.polyphony=std::max(1,std::min(p.polyphony,maxVoices));}
  void setModWheel(float value) noexcept {modWheel=clamp(value,0,1);}
+ void setSequence(const SequencePattern& pattern) noexcept { sequence.setPattern(pattern); }
+ int sequenceStep() const noexcept { return sequence.currentStep(); }
  const Params &params() const noexcept {return p;}
  ModRoute &route(size_t i) noexcept {return routes[std::min(i,routes.size()-1)];}
  int numVoices() const noexcept {return activeCount;}
@@ -171,6 +176,7 @@ public:
   Voice *pick=nullptr;
   for(int k=0;k<p.polyphony;k++) if(!voices[(size_t)k].active){pick=&voices[(size_t)k];break;}
   if(!pick){pick=&voices[0];for(int k=1;k<p.polyphony;k++) if(voices[(size_t)k].age<pick->age)pick=&voices[(size_t)k];}
+  if(activeCount==0) sequence.reset();
   pick->start(note,clamp(vel,0,1),++noteCounter);
  }
  void noteOff(int note) noexcept {for(auto &v:voices) if(v.active&&v.note==note&&v.amp.stage!=Envelope::release){
@@ -181,6 +187,7 @@ public:
   if(!outL||!outR||count<=0)return;
   for(int n=0;n<count;n++){
    float l=0,r=0;
+   const SequenceFrame seq=sequence.tick();
    float lfo=std::sin(2*pi*lfoPhase);
    std::array<float,8> lfos{};
    for(int k=0;k<8;k++) lfos[(size_t)k]=std::sin(2*pi*(lfoPhase*(1+k*.18f)+k*.125f));
@@ -189,6 +196,9 @@ public:
    for(auto &v:voices){
     if(!v.active) continue;
     float env=v.amp.next(p,sr);
+    // Keep voice allocation intact while steps gate/retrigger the held note.
+    // Short smoothing avoids clicks at step/rest boundaries.
+    v.stepGate+=(seq.gate-v.stepGate)*clamp(1.f/(sr*.003f),0.f,1.f);
     if(v.amp.stage==Envelope::idle){v.active=false;continue;}
     countActive++;
     std::array<float,6> envs{};
@@ -212,13 +222,13 @@ public:
       default:break;
      }
     }
-    float vCutoff=25.f*std::pow(800.f,clamp(p.cutoff+filterMod+p.lfoDepth*lfo*.18f,0,1));
+    float vCutoff=25.f*std::pow(800.f,clamp(p.cutoff+filterMod+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0,1));
     float vl=0,vr=0;
     for(int gen=0;gen<generators;gen++){
      float level=clamp(p.oscLevel[gen],0,1);
      if(level<.00001f)continue;
      int uni=std::max(1,std::min(maxUnison,p.unison[gen]));
-     float base=noteHz(v.note)*std::pow(2.f,(p.oscPitch[gen]+pitchMod)/12.f);
+     float base=noteHz(v.note)*std::pow(2.f,(p.oscPitch[gen]+pitchMod+(float)seq.pitch)/12.f);
      float amp=level/(std::sqrt((float)uni));
      for(int u=0;u<uni;u++){
       float det=(uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.detune*.19f;
@@ -242,7 +252,9 @@ public:
      b=mix(b,f2r,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);
     }
     float dry=1.f-p.resonance*.22f;
-    l+=a*env*v.velocity*dry*clamp(1.f+volumeMod,0,2);r+=b*env*v.velocity*dry*clamp(1.f+volumeMod,0,2);
+    const float seqGain=seq.velocity*v.stepGate;
+    l+=a*env*v.velocity*dry*seqGain*clamp(1.f+volumeMod,0,2);
+    r+=b*env*v.velocity*dry*seqGain*clamp(1.f+volumeMod,0,2);
    }
    activeCount=countActive;
    // Soft saturation.
