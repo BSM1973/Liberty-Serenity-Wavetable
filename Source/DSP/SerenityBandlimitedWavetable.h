@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <complex>
+#include <vector>
 
 namespace serenity {
 constexpr int customMipCount=9; // harmonic ceilings: 256,128,64,...,2,1
@@ -36,7 +37,7 @@ inline void buildCustomMipFrame(const spectral::Frame& frame,CustomMipFrame& out
 }
 
 class BandlimitedCustomWavetable {
- std::array<float,(size_t)editableOscillators*editableFrames*customFrameMipSamples> values{};
+ std::vector<float> values; // allocated only during construction, never during render
  static size_t index(int osc,int frame,int mip,int sample) noexcept {
   return ((((size_t)osc*editableFrames+(size_t)frame)*customMipCount+
             (size_t)mip)*editableSamples+(size_t)sample);
@@ -45,7 +46,8 @@ class BandlimitedCustomWavetable {
   return values[index(osc,frame,mip,sample)];
  }
 public:
- BandlimitedCustomWavetable(){
+ BandlimitedCustomWavetable():
+  values((size_t)editableOscillators*editableFrames*customFrameMipSamples,0.f){
   spectral::Frame sine{};
   for(int i=0;i<editableSamples;i++)
    sine[(size_t)i]=std::sin(spectral::tau*(float)i/editableSamples);
