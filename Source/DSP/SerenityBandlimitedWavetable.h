@@ -65,9 +65,14 @@ public:
  static int levelFor(float hz,float sampleRate) noexcept {
   if(!std::isfinite(hz)||!std::isfinite(sampleRate)||hz<=0.f||
      sampleRate<8000.f||hz>=sampleRate*.48f)return -1;
-  const int allowed=std::max(1,(int)(sampleRate*.48f/hz));
   int mip=0;
-  while(mip<customMipCount-1 && (1<<(customMipCount-1-mip))>allowed)++mip;
+  // Compare against the exact same frequency boundary used by blendFor().
+  // Casting the ratio to int could move a note to the next mip one ULP early.
+  while(mip<customMipCount-1){
+   const int cap=1<<(customMipCount-1-mip);
+   if(hz<=sampleRate*.48f/(float)cap)break;
+   ++mip;
+  }
   return mip;
  }
  // Blend only on the SAFE side of each harmonic-limit boundary.
