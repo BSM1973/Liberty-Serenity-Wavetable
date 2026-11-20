@@ -40,7 +40,11 @@ def fetch(url):
 def main():
     root = Path.cwd()
     # Reconstruct original source snapshot from temporary lossless RGB transport.
-    src = Image.open(BytesIO(fetch(SOURCE_URL))).convert("RGB").tobytes()
+    response = fetch(SOURCE_URL)
+    candidate = Image.open(BytesIO(response))
+    src = candidate.convert("RGB").tobytes()
+    print("Transport diagnostic:", candidate.format, candidate.mode, candidate.size,
+          "magic candidate=", src[:32].hex(), "expected=", MAGIC.hex(), flush=True)
     assert src.startswith(MAGIC), "Source transport image changed during upload"
     offset = len(MAGIC)
     size = struct.unpack(">Q", src[offset:offset + 8])[0]
