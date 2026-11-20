@@ -51,6 +51,11 @@ SerenityAudioProcessor::SerenityAudioProcessor():
     const float phase=6.2831853071795864769f*(float)i/serenity::editableSamples;
     customPoints[serenity::EditableWavetable::index(o,f,i)].store(std::sin(phase));
    }
+ for(auto& version:customMipVersions)version.store(0);
+ appliedMipVersions.fill(0);
+ for(int o=0;o<serenity::editableOscillators;o++)
+  for(int f=0;f<serenity::editableFrames;f++)
+   rebuildCustomFrame(o,f);
  const auto defaults=serenity::defaultSequence();
  for(int b=0;b<serenity::sequenceBanks;b++)
   for(int i=0;i<serenity::sequenceMaxSteps;i++) {
@@ -142,7 +147,8 @@ void SerenityAudioProcessor::setCustomPoint(int oscillator,int frame,int sample,
     sample<0||sample>=serenity::editableSamples)return;
  const auto index=serenity::EditableWavetable::index(oscillator,frame,sample);
  customPoints[index].store(juce::jlimit(-1.f,1.f,value),std::memory_order_relaxed);
- customRevision.fetch_add(1,std::memory_order_release);
+ // A drag writes to the editable raw frame. The GUI publishes the completed
+ // anti-aliased spectrum on mouse release to avoid heavy FFT work per pixel.
 }
 float SerenityAudioProcessor::getCustomPoint(int oscillator,int frame,int sample) const noexcept {
  if(oscillator<0||oscillator>=serenity::editableOscillators||
@@ -159,7 +165,7 @@ void SerenityAudioProcessor::commitCustomFrame(int oscillator,int frame,
   customPoints[serenity::EditableWavetable::index(oscillator,frame,i)]
    .store(juce::jlimit(-1.f,1.f,points[(size_t)i]),std::memory_order_relaxed);
  }
- customRevision.fetch_add(1,std::memory_order_release);
+ rebuildCustomFrame(oscillator,frame);
 }
 void SerenityAudioProcessor::normalizeCustomFrame(int oscillator,int frame) noexcept {
  if(oscillator<0||oscillator>=serenity::editableOscillators||frame<0||frame>=serenity::editableFrames)return;
@@ -234,22 +240,43 @@ void SerenityAudioProcessor::morphCustomFrames(int osc,int first,int last) noexc
  }
 }
 
+void SerenityAudioProcessor::rebuildCustomFrame(int oscillator,int frame) noexcept {
+ if(oscillator<0||oscillator>=serenity::editableOscillators||
+    frame<0||frame>=serenity::editableFrames)return;
+ serenity::spectral::Frame raw{};
+ for(int i=0;i<serenity::editableSamples;i++)
+  raw[(size_t)i]=getCustomPoint(oscillator,frame,i);
+ serenity::CustomMipFrame mips{};
+ serenity::buildCustomMipFrame(raw,mips);
+ const auto slot=(size_t)oscillator*serenity::editableFrames+(size_t)frame;
+ customMipVersions[slot].fetch_add(1,std::memory_order_acq_rel); // odd: writing
+ const size_t base=slot*serenity::customFrameMipSamples;
+ for(size_t i=0;i<serenity::customFrameMipSamples;i++)
+  customMipPoints[base+i].store(mips[i],std::memory_order_relaxed);
+ customMipVersions[slot].fetch_add(1,std::memory_order_release); // even: ready
+}
 void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi){
  juce::ScopedNoDenormals noDenormals;
  buffer.clear();
  if(buffer.getNumChannels()<2)return;
  engine.setParams(buildParams());
- // Atomic data is only copied when modified. No allocation, no locks in render.
- const unsigned revision=customRevision.load(std::memory_order_acquire);
- if(revision!=appliedCustomRevision) {
-  for(int o=0;o<serenity::editableOscillators;o++)
-   for(int f=0;f<serenity::editableFrames;f++)
-    for(int i=0;i<serenity::editableSamples;i++) {
-     const auto index=serenity::EditableWavetable::index(o,f,i);
-     engine.setCustomSample(o,f,i,customPoints[index].load(std::memory_order_relaxed));
-    }
-  appliedCustomRevision=revision;
- }
+ // Only changed frames are copied at block boundaries. Do not spin on a writer.
+ // Snapshot into fixed stack storage; if a UI edit occurs midway, discard it
+ // and retain the previous completed spectrum until the following block.
+ for(int o=0;o<serenity::editableOscillators;o++)
+  for(int f=0;f<serenity::editableFrames;f++){
+   const size_t slot=(size_t)o*serenity::editableFrames+(size_t)f;
+   const auto begin=customMipVersions[slot].load(std::memory_order_acquire);
+   if((begin&1u)!=0u || begin==appliedMipVersions[slot])continue;
+   serenity::CustomMipFrame scratch{};
+   const size_t offset=slot*serenity::customFrameMipSamples;
+   for(size_t i=0;i<serenity::customFrameMipSamples;i++)
+    scratch[i]=customMipPoints[offset+i].load(std::memory_order_relaxed);
+   const auto end=customMipVersions[slot].load(std::memory_order_acquire);
+   if(begin!=end || (end&1u)!=0u)continue;
+   engine.setCustomMipFrame(o,f,scratch);
+   appliedMipVersions[slot]=end;
+  }
  serenity::SequencePattern sequence;
  const int bank=sequenceBank.load(std::memory_order_relaxed);
  for(int i=0;i<serenity::sequenceMaxSteps;i++)
@@ -433,7 +460,9 @@ void SerenityAudioProcessor::setStateInformation(const void* data,int size){
     customPoints[i].store(std::isfinite(value)?juce::jlimit(-1.f,1.f,value):0.f,
                          std::memory_order_relaxed);
    }
-   customRevision.fetch_add(1,std::memory_order_release);
+   for(int o=0;o<serenity::editableOscillators;o++)
+    for(int f=0;f<serenity::editableFrames;f++)
+     rebuildCustomFrame(o,f);
   }
   apvts.replaceState(state);
  }
