@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/import-original-ui.yml
+      - tools/bootstrap_original_ui.py
   workflow_dispatch:
 
 permissions:
