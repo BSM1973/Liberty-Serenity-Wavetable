@@ -58,6 +58,7 @@ public:
  void removeCustomDc(int oscillator,int frame) noexcept;
  void copyCustomFrame(int oscillator,int from,int to) noexcept;
  void resetCustomFrame(int oscillator,int frame) noexcept;
+ void rebuildCustomFrame(int oscillator,int frame) noexcept;
  std::array<float,serenity::spectral::displayedHarmonics>
  getCustomHarmonics(int oscillator,int frame) const noexcept;
  void setCustomHarmonic(int oscillator,int frame,int harmonic,float amplitude) noexcept;
@@ -97,8 +98,11 @@ public:
 private:
  serenity::Engine engine;
  std::array<std::atomic<float>,serenity::editableTotal> customPoints{};
- std::atomic<unsigned> customRevision{1};
- unsigned appliedCustomRevision=0;
+ // Published by editor/host thread, read atomically by the audio callback.
+ // Per-frame seqlock: odd while writing; even when complete. Never block/spin on audio.
+ std::array<std::atomic<float>,serenity::editableTotal*serenity::customMipCount> customMipPoints{};
+ std::array<std::atomic<unsigned>,serenity::editableOscillators*serenity::editableFrames> customMipVersions{};
+ std::array<unsigned,serenity::editableOscillators*serenity::editableFrames> appliedMipVersions{};
  std::array<std::atomic<int>,serenity::parameterCount> controller{};
  std::array<std::atomic<float>,serenity::parameterCount> midiOverride{};
  std::atomic<int> learnTarget{-1},lastCC{-1},selectedPreset{0},voiceCount{0};
