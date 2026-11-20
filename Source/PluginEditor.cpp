@@ -31,7 +31,7 @@ SerenityEditor::SerenityEditor(SerenityAudioProcessor& p):juce::AudioProcessorEd
  }};
  for(size_t i=0;i<skins.size();i++)
   skins[i]=juce::ImageCache::getFromMemory(skinsData[i].first,skinsData[i].second);
- search.setTextToShowWhenEmpty("Rechercher par nom, étiquette ou auteur...",juce::Colours::grey);
+ search.setTextToShowWhenEmpty(juce::String::fromUTF8("Rechercher par nom, étiquette ou auteur..."),juce::Colours::grey);
  search.setColour(juce::TextEditor::backgroundColourId,juce::Colour(0xff0a111c));
  search.setColour(juce::TextEditor::textColourId,juce::Colour(0xffd6e0ec));
  search.setColour(juce::TextEditor::outlineColourId,juce::Colour(0xff303d51));
@@ -71,7 +71,9 @@ juce::Point<float> SerenityEditor::logical(juce::Point<float> p) const {
 juce::Rectangle<float> SerenityEditor::scaleRect(float x,float y,float w,float h) const {
  return {x*getWidth()/canvasWidth,y*getHeight()/canvasHeight,w*getWidth()/canvasWidth,h*getHeight()/canvasHeight};
 }
-juce::String SerenityEditor::tr(const char* fr,const char* en)const {return synth.french()?juce::String(fr):juce::String(en);}
+juce::String SerenityEditor::tr(const char* fr,const char* en)const {
+ return juce::String::fromUTF8(synth.french()?fr:en);
+}
 void SerenityEditor::drawText(juce::Graphics& g,const juce::String& s,float x,float y,float w,float h,juce::Colour colour,float pts,bool bold){
  g.setColour(colour);
  g.setFont(juce::Font(pts*getWidth()/canvasWidth,bold?juce::Font::bold:juce::Font::plain));
@@ -122,7 +124,7 @@ void SerenityEditor::paintPresets(juce::Graphics& g){
   if(pi==synth.currentPreset()){
    g.setColour(juce::Colour(0xff273e4c));g.fillRoundedRectangle(scaleRect(x-7,y,317,29),3.f);
   }
-  drawText(g,synth.isFavorite(pi)?"★":"☆",x,y,17,26,gold,15);
+  drawText(g,juce::String::fromUTF8(synth.isFavorite(pi)?"★":"☆"),x,y,17,26,gold,15);
   drawText(g,juce::String(preset.name),x+24,y,207,26,
    pi==synth.currentPreset()?aqua:juce::Colour(0xffd3d9e3),12.9f,true);
   drawText(g,juce::String(preset.category).toUpperCase(),x+227,y,83,26,muted,10.5f,true);
@@ -145,7 +147,7 @@ void SerenityEditor::paintPresets(juce::Graphics& g){
  const auto& current=serenity::factoryPresets()[(size_t)synth.currentPreset()];
  drawText(g,tr("PRESET SÉLECTIONNÉ","SELECTED PRESET"),1004,149,380,26,muted,14,true);
  drawText(g,juce::String(current.name),1005,182,453,31,aqua,18,true);
- drawText(g,juce::String(current.category)+" · Liberty Music Software",1005,220,445,25,muted,12);
+ drawText(g,juce::String(current.category)+juce::String::fromUTF8(" · Liberty Music Software"),1005,220,445,25,muted,12);
 }
 void SerenityEditor::paintSettings(juce::Graphics& g){
  if(tab!=9)return;
@@ -162,7 +164,7 @@ void SerenityEditor::paintSettings(juce::Graphics& g){
   int cc=synth.mappedCC(i);if(cc<0)continue;
   int row=found%7,col=found/7;
   if(col>1)break;
-  juce::String s=juce::String("CC ")+juce::String(cc)+"  →  "+juce::String(serenity::specs[(size_t)i].id);
+  juce::String s=juce::String("CC ")+juce::String(cc)+juce::String::fromUTF8("  →  ")+juce::String(serenity::specs[(size_t)i].id);
   drawText(g,s,784+col*350,277+row*25,342,23,aqua,12);
   ++found;
  }
@@ -205,7 +207,7 @@ void SerenityEditor::paintMatrix(juce::Graphics& g){
   float x=1099.f+p*123;
   g.setColour(p==matrixPage?juce::Colour(0xff4c4535):blue);
   g.fillRoundedRectangle(scaleRect(x,120,118,33),4.f);
-  drawText(g,juce::String(p*24+1)+"–"+juce::String(std::min(64,(p+1)*24)),x+13,122,100,29,
+  drawText(g,juce::String(p*24+1)+juce::String::fromUTF8("–")+juce::String(std::min(64,(p+1)*24)),x+13,122,100,29,
            p==matrixPage?gold:muted,12,true);
  }
  for(int col=0;col<2;col++)for(int row=0;row<12;row++){
@@ -219,7 +221,7 @@ void SerenityEditor::paintMatrix(juce::Graphics& g){
   drawText(g,juce::String(slot+1).paddedLeft('0',2),x+8,y+2,39,26,muted,12,true);
   drawText(g,v.source>=0?juce::String(sourceNames[v.source]):"Off",x+60,y+3,152,25,
            v.source>=0?aqua:muted,13);
-  drawText(g,v.destination>=0?juce::String(synth.french()?destFR[v.destination]:destEN[v.destination]):
+  drawText(g,v.destination>=0?juce::String::fromUTF8(synth.french()?destFR[v.destination]:destEN[v.destination]):
            tr("Aucune","None"),x+270,y+3,150,25,v.destination>=0?aqua:muted,12);
   drawText(g,juce::String(v.amount,2),x+606,y+2,83,26,muted,12);
  }
