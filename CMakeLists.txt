@@ -73,7 +73,7 @@ if(SERENITY_BUILD_PLUGIN)
     add_executable(serenity_editor_startup_smoke Tests/EditorStartupSmoke.cpp)
     target_include_directories(serenity_editor_startup_smoke PRIVATE
       Source "${CMAKE_CURRENT_BINARY_DIR}/SerenityWavetable_artefacts/JuceLibraryCode")
-    target_link_libraries(serenity_editor_startup_smoke PRIVATE SerenityWavetable juce::juce_audio_utils)
+    target_link_libraries(serenity_editor_startup_smoke PRIVATE SerenityWavetable SerenitySkins juce::juce_audio_utils)
     add_test(NAME serenity_editor_startup_smoke COMMAND serenity_editor_startup_smoke)
     set_tests_properties(serenity_editor_startup_smoke PROPERTIES TIMEOUT 60)
   endif()
