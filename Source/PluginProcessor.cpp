@@ -10,7 +10,7 @@ const std::array<ParamSpec,parameterCount> specs={{
  {"reverbMix",0,1,.2f},{"drive",0,1,0},{"lfoRate",.01f,40,5},
  {"lfoDepth",0,1,0},
  {"oscALevel",0,1,.7f},{"oscBLevel",0,1,0},{"oscCLevel",0,1,0},{"oscDLevel",0,1,0},
- {"oscAWave",0,15,1},{"oscBWave",0,15,0},{"oscCWave",0,15,3},{"oscDWave",0,15,0},
+ {"oscAWave",0,16,1},{"oscBWave",0,16,0},{"oscCWave",0,16,3},{"oscDWave",0,16,0},
  {"oscAUnison",1,16,1},{"oscBUnison",1,16,1},{"oscCUnison",1,16,1},{"oscDUnison",1,16,1},
  {"polyphony",1,32,16},
  {"filter2Cutoff",0,1,.55f},{"filter2Resonance",0,1,.2f},
@@ -44,6 +44,12 @@ SerenityAudioProcessor::SerenityAudioProcessor():
   modAmounts[(size_t)i].store(0);
  }
  for(auto &f:favorites)f.store(false);
+ for(int o=0;o<serenity::editableOscillators;o++)
+  for(int f=0;f<serenity::editableFrames;f++)
+   for(int i=0;i<serenity::editableSamples;i++) {
+    const float phase=6.2831853071795864769f*(float)i/serenity::editableSamples;
+    customPoints[serenity::EditableWavetable::index(o,f,i)].store(std::sin(phase));
+   }
  const auto defaults=serenity::defaultSequence();
  for(int b=0;b<serenity::sequenceBanks;b++)
   for(int i=0;i<serenity::sequenceMaxSteps;i++) {
@@ -128,11 +134,85 @@ void SerenityAudioProcessor::setSequenceRate(int rate) noexcept {
  if(rate==4||rate==8||rate==16||rate==32)
   sequenceRate.store(rate,std::memory_order_relaxed);
 }
+
+void SerenityAudioProcessor::setCustomPoint(int oscillator,int frame,int sample,float value) noexcept {
+ if(oscillator<0||oscillator>=serenity::editableOscillators||
+    frame<0||frame>=serenity::editableFrames||
+    sample<0||sample>=serenity::editableSamples)return;
+ const auto index=serenity::EditableWavetable::index(oscillator,frame,sample);
+ customPoints[index].store(juce::jlimit(-1.f,1.f,value),std::memory_order_relaxed);
+ customRevision.fetch_add(1,std::memory_order_release);
+}
+float SerenityAudioProcessor::getCustomPoint(int oscillator,int frame,int sample) const noexcept {
+ if(oscillator<0||oscillator>=serenity::editableOscillators||
+    frame<0||frame>=serenity::editableFrames||
+    sample<0||sample>=serenity::editableSamples)return 0.f;
+ return customPoints[serenity::EditableWavetable::index(oscillator,frame,sample)]
+   .load(std::memory_order_relaxed);
+}
+void SerenityAudioProcessor::commitCustomFrame(int oscillator,int frame,
+ const std::array<float,serenity::editableSamples>& points) noexcept {
+ if(oscillator<0||oscillator>=serenity::editableOscillators||
+    frame<0||frame>=serenity::editableFrames)return;
+ for(int i=0;i<serenity::editableSamples;i++) {
+  customPoints[serenity::EditableWavetable::index(oscillator,frame,i)]
+   .store(juce::jlimit(-1.f,1.f,points[(size_t)i]),std::memory_order_relaxed);
+ }
+ customRevision.fetch_add(1,std::memory_order_release);
+}
+void SerenityAudioProcessor::normalizeCustomFrame(int oscillator,int frame) noexcept {
+ if(oscillator<0||oscillator>=serenity::editableOscillators||frame<0||frame>=serenity::editableFrames)return;
+ std::array<float,serenity::editableSamples> points{};
+ float peak=0;
+ for(int i=0;i<serenity::editableSamples;i++){
+  points[(size_t)i]=getCustomPoint(oscillator,frame,i);
+  peak=std::max(peak,std::abs(points[(size_t)i]));
+ }
+ if(peak<.000001f)return;
+ for(auto& value:points)value/=peak;
+ commitCustomFrame(oscillator,frame,points);
+}
+void SerenityAudioProcessor::removeCustomDc(int oscillator,int frame) noexcept {
+ if(oscillator<0||oscillator>=serenity::editableOscillators||frame<0||frame>=serenity::editableFrames)return;
+ std::array<float,serenity::editableSamples> points{};
+ float mean=0;
+ for(int i=0;i<serenity::editableSamples;i++){
+  points[(size_t)i]=getCustomPoint(oscillator,frame,i);
+  mean+=points[(size_t)i];
+ }
+ mean/=serenity::editableSamples;
+ for(auto& value:points)value-=mean;
+ commitCustomFrame(oscillator,frame,points);
+}
+void SerenityAudioProcessor::copyCustomFrame(int oscillator,int from,int to) noexcept {
+ if(oscillator<0||oscillator>=serenity::editableOscillators||from<0||from>=serenity::editableFrames||
+    to<0||to>=serenity::editableFrames)return;
+ std::array<float,serenity::editableSamples> points{};
+ for(int i=0;i<serenity::editableSamples;i++)points[(size_t)i]=getCustomPoint(oscillator,from,i);
+ commitCustomFrame(oscillator,to,points);
+}
+void SerenityAudioProcessor::resetCustomFrame(int oscillator,int frame) noexcept {
+ std::array<float,serenity::editableSamples> points{};
+ for(int i=0;i<serenity::editableSamples;i++)
+  points[(size_t)i]=std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
+ commitCustomFrame(oscillator,frame,points);
+}
 void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi){
  juce::ScopedNoDenormals noDenormals;
  buffer.clear();
  if(buffer.getNumChannels()<2)return;
  engine.setParams(buildParams());
+ // Atomic data is only copied when modified. No allocation, no locks in render.
+ const unsigned revision=customRevision.load(std::memory_order_acquire);
+ if(revision!=appliedCustomRevision) {
+  for(int o=0;o<serenity::editableOscillators;o++)
+   for(int f=0;f<serenity::editableFrames;f++)
+    for(int i=0;i<serenity::editableSamples;i++) {
+     const auto index=serenity::EditableWavetable::index(o,f,i);
+     engine.setCustomSample(o,f,i,customPoints[index].load(std::memory_order_relaxed));
+    }
+  appliedCustomRevision=revision;
+ }
  serenity::SequencePattern sequence;
  const int bank=sequenceBank.load(std::memory_order_relaxed);
  for(int i=0;i<serenity::sequenceMaxSteps;i++)
