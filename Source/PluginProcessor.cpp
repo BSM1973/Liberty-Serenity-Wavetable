@@ -51,6 +51,8 @@ SerenityAudioProcessor::SerenityAudioProcessor():
     const float phase=6.2831853071795864769f*(float)i/serenity::editableSamples;
     customPoints[serenity::EditableWavetable::index(o,f,i)].store(std::sin(phase));
    }
+ customMipPoints=std::make_unique<std::atomic<float>[]>(
+   serenity::editableTotal*serenity::customMipCount);
  for(auto& version:customMipVersions)version.store(0);
  appliedMipVersions.fill(0);
  for(int o=0;o<serenity::editableOscillators;o++)
