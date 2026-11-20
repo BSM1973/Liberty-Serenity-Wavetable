@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cstring>
 
 namespace serenity {
 const std::array<ParamSpec,parameterCount> specs={{
@@ -330,6 +331,14 @@ void SerenityAudioProcessor::getStateInformation(juce::MemoryBlock& dest){
  juce::String fave;
  for(const auto& f:favorites)fave+=(f.load()?"1":"0");
  state.setProperty("favorites",fave,nullptr);
+ // Cross-platform project state: every user wavetable is embedded in its project/preset.
+ // Native little-endian float PCM, base64 within the existing APVTS XML.
+ juce::MemoryBlock waveBytes;
+ for(size_t i=0;i<serenity::editableTotal;i++){
+  const float value=customPoints[i].load(std::memory_order_relaxed);
+  waveBytes.append(&value,sizeof(value));
+ }
+ state.setProperty("customWavetablePCM",waveBytes.toBase64Encoding(),nullptr);
  state.setProperty("sequenceMode",sequenceMode.load(),nullptr);
  state.setProperty("sequenceBank",sequenceBank.load(),nullptr);
  state.setProperty("sequenceLength",sequenceLength.load(),nullptr);
@@ -376,6 +385,19 @@ void SerenityAudioProcessor::setStateInformation(const void* data,int size){
      (float)state.getProperty(prefix+"V",defaults.velocity),
      (float)state.getProperty(prefix+"M",defaults.modulation)
    });
+  }
+  const juce::String encoded=state.getProperty("customWavetablePCM","").toString();
+  juce::MemoryBlock waveBytes;
+  if(waveBytes.fromBase64Encoding(encoded) &&
+     waveBytes.getSize()==serenity::editableTotal*sizeof(float)){
+   const auto* bytes=static_cast<const unsigned char*>(waveBytes.getData());
+   for(size_t i=0;i<serenity::editableTotal;i++){
+    float value=0.f;
+    std::memcpy(&value,bytes+i*sizeof(float),sizeof(value));
+    customPoints[i].store(std::isfinite(value)?juce::jlimit(-1.f,1.f,value):0.f,
+                         std::memory_order_relaxed);
+   }
+   customRevision.fetch_add(1,std::memory_order_release);
   }
   apvts.replaceState(state);
  }
