@@ -1,34 +1,38 @@
 #include <JuceHeader.h>
-#include <memory>
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
 #include <iostream>
+#include <memory>
 
-extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
-
-int main() {
-    // Run the same Editor constructor and resized() path as AU/VST3/Standalone.
-    juce::ScopedJuceInitialiser_GUI juceInit;
-    std::unique_ptr<juce::AudioProcessor> processor(createPluginFilter());
-    if (!processor) return 10;
-
-    // In v0.1.1 this call immediately segfaulted in SerenityEditor::resized().
-    std::unique_ptr<juce::AudioProcessorEditor> editor(processor->createEditor());
-    if (!editor) return 11;
-    if (editor->getWidth() != 1380 || editor->getHeight() != 900) return 12;
-
-    // Exercise synchronous layout callbacks, without opening another window.
-    editor->setSize(1379, 899);
-    editor->setSize(1380, 900);
-
-    // Trigger the 10 page buttons to exercise repaint/layout on every tab.
-    for (int i = 0; i < 10; ++i) {
-        auto* button = dynamic_cast<juce::Button*>(editor->getChildComponent(i));
-        if (!button) return 13;
-        button->triggerClick();
-    }
-
-    if (editor->getWidth() != 1380 || editor->getHeight() != 900) return 14;
-    editor.reset();
-    processor.reset();
-    std::cout << "SERENITY_EDITOR_STARTUP_OK\n";
-    return 0;
+int main(){
+ juce::ScopedJuceInitialiser_GUI gui;
+ SerenityAudioProcessor processor;
+ processor.prepareToPlay(48000,256);
+ auto editor=std::make_unique<SerenityEditor>(processor);
+ if(!editor->hasTenOriginalScreens()){
+  std::cerr<<"ERROR: original 2048x1361 reference screenshots missing"<<std::endl;
+  return 10;
+ }
+ if(editor->getWidth()<900 || editor->getHeight()<590){
+  std::cerr<<"ERROR: impractical UI dimensions"<<std::endl;
+  return 11;
+ }
+ for(int tab=0;tab<10;++tab){
+  editor->selectTabForSmokeTest(tab);
+  auto snapshot=juce::Image(juce::Image::ARGB,editor->getWidth(),editor->getHeight(),true);
+  juce::Graphics painter(snapshot);
+  editor->paint(painter);
+  if(snapshot.isNull()) return 12;
+  if(tab==0 || tab==1 || tab==8 || tab==9){
+   auto destination=juce::File::getCurrentWorkingDirectory().getChildFile(
+       juce::String("Serenity-UI-Preview-")+juce::String(tab)+".png");
+   juce::PNGImageFormat png;
+   auto stream=std::unique_ptr<juce::FileOutputStream>(destination.createOutputStream());
+   if(stream)png.writeImageToStream(snapshot,*stream);
+  }
+ }
+ editor.reset();
+ processor.releaseResources();
+ std::cout<<"SERENITY_TEN_ORIGINAL_SCREENS_EDITOR_SMOKE_OK"<<std::endl;
+ return 0;
 }

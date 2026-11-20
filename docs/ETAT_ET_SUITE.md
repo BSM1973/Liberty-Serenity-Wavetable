@@ -1,34 +1,56 @@
 # Serenity WAVETABLE — Suivi de réalisation (20 novembre 2026)
 
-## Référence visuelle
-Les dix captures originales sont la référence stricte : oscillateurs, éditeur wavetable, filtres, modulation, effets, arpégiateur, séquenceur, matrice, presets et réglages. Ne pas inventer d'images alternatives. Aucun chevauchement, caractère corrompu ni élément inaccessible. Maintenir la palette bleu nuit/graphite, turquoise, violet et or.
+## Conception visuelle : référence contractuelle
 
-## État du paquet de développement v0.1
-Le ZIP source préparé contient un moteur DSP autonome, un projet CMake/JUCE, des tests, les 10 captures et une première interface interactive partielle. Ce paquet **n'est pas encore entièrement publié dans ce dépôt GitHub**.
+Les 10 PNG originaux de l'utilisateur (2048×1361) sont dans `Assets/UI`. Ils servent de calques visuels de référence aux dix pages :
 
-| Module | État du paquet v0.1 |
-| --- | --- |
-| DSP wavetable | Cœur autonome testé, 16 familles × 8 frames |
-| Polyphonie | Base jusqu'à 32 notes |
-| Oscillateurs | Base de 4 générateurs |
-| Filtres | Passe-bas simplifiés, série/parallèle |
-| Enveloppes/LFO | Versions partielles |
-| Matrice | 64 emplacements, 5 destinations DSP de base |
-| Effets | Saturation, délai et réverbération simples |
-| Arpégiateur | Non implémenté |
-| Séquenceur 64 pas | Non implémenté |
-| Presets | 100 définitions programmatiques, non validées individuellement |
-| MIDI Learn | Implémentation initiale, validation DAW nécessaire |
-| FR/EN | Navigation initiale, traduction complète non réalisée |
-| AU/VST3 | Compilation/validation DAW non effectuées |
+1. OSCILLATORS
+2. WAVETABLE EDITOR
+3. FILTERS
+4. MODULATION
+5. EFFECTS
+6. ARPEGGIATOR
+7. SEQUENCER
+8. MATRIX
+9. PRESETS
+10. SETTINGS
 
-## Avant publication commerciale
-1. Transférer tous les fichiers sources et ressources PNG du paquet v0.1 dans GitHub.
-2. Exécuter les builds AU/VST3/Standalone macOS et VST3/Standalone Windows, corriger les erreurs et produire de vrais artefacts.
-3. Remplacer les captures statiques par des composants JUCE interactifs, fidèles à la référence pixel par pixel.
-4. Compléter synthèse, import/édition de wavetable, filtres, enveloppes, LFOs, matrice, trente effets, arpégiateur et séquenceur 64 pas.
-5. Finaliser les traductions FR/EN et vérifier les accents, symboles, tailles et alignements sur les dix onglets.
-6. Écouter, équilibrer, corriger et valider les 100 presets un par un.
-7. Tester DAW, performances, MIDI Learn, sauvegarde/rappel, puis réaliser signature et notarisation macOS.
+Contrat d'interface : géométrie, couleurs, typographies, sections, logique de navigation conservées ; pas d'images alternatives inventées ; aucun chevauchement ; aucun glyphe corrompu. Remplacer progressivement les captures par une vraie interface vectorielle/juce interactive, **en gardant exactement cette direction**, avec animation et valeurs en temps réel.
 
-**Ne pas présenter les fonctionnalités non développées comme finalisées.**
+## Ce qui est vraiment en place
+
+| Domaine | Statut | Précision |
+|---|---|---|
+| Source C++ JUCE AU/VST3/Standalone | Code écrit, non compilé ici | JUCE indisponible dans le conteneur de validation |
+| Moteur sonore autonome | Test validé | Génère de l'audio sans JUCE |
+| 4 générateurs | Base fonctionnelle | 16 types de tables × 8 frames ; D n'a pas encore de lecture de sample |
+| Unison | Base fonctionnelle | 1 à 16, contrôle limité dans l'UI actuelle |
+| Polyphonie | Base fonctionnelle | Jusqu'à 32 notes, vol de voix simples |
+| Dual filters | Base fonctionnelle | Passe-bas seulement (pente approximative), série/parallèle |
+| Six enveloppes | Partiel | ADSR simple réutilisée ; pas six DAHDSR indépendantes avec courbes |
+| Huit LFO | Partiel | Sorties sinusoïdales, pas les autres formes/modes |
+| 64 routages | Partiel mais câblé au DSP | Destinations de base, pas toutes les destinations demandées |
+| Effets | 3 modules audio simplifiés | Saturation, délai, réverbération ; 27+ traitements à développer |
+| Arpégiateur | Non implémenté | Écran présent comme référence visuelle seulement |
+| Séquenceur 64 pas | Non implémenté | Écran présent comme référence visuelle seulement |
+| Presets d'usine | 100 définitions, non finalisées | Génération déterministe ; nécessitent programmation et écoute individuelles |
+| Navigateur | Partiellement interactif | Recherche, catégories, favoris, importer/exporter l'état |
+| FR/EN | Partiel | Navigation et commandes nouvelles, pas toutes les inscriptions des captures |
+| MIDI Learn CC | Implémentation initiale | Mapping par clic droit, réception MIDI CC et persistance ; audit DAW requis |
+| AU/VST3 validation | Non effectuée | Workflow CI fourni mais non exécuté sur macOS/Windows ici |
+
+## Étapes indispensables avant une commercialisation
+
+1. Compiler AU/VST3/Standalone sur macOS ARM64 et VST3/Standalone sur Windows, lever les erreurs, tester l'ouverture dans plusieurs DAW.
+2. Convertir chaque contrôle représenté sur les dix captures en véritable composant interactif JUCE au plus près de son emplacement de référence ; faire disparaître les éléments visuellement figés, les curseurs de captures et les miniatures d'écran parasites.
+3. Compléter le moteur de table : 256 frames, interpolation haute qualité, import WAV/glisser-déposer, édition par dessin/harmoniques/FFT, multi-samples et sauvegarde.
+4. Ajouter les quinze algorithmes réels de chaque filtre, résonance, drive et enveloppes indépendantes.
+5. Compléter les six enveloppes DAHDSR, huit LFOs multi-formes, toutes les sources/destinations et des modulations sur chaque paramètre ; actualiser les arcs de modulation.
+6. Implémenter chaque effet (30) avec bypass, wet/dry, routage, réordonnancement, gestion des queues et tests audio.
+7. Programmer arpégiateur avancé et séquenceur polyphonique 64 pas, sorties MIDI si compatibles et synchronisation DAW.
+8. Finaliser mono/legato/portamento, aftertouch polyphonique, sustain, Scala et microtuning.
+9. Traduire 100 % des éléments visuels : FR par défaut, bascule EN, accents et symboles vérifiés sur chaque onglet.
+10. Écouter, corriger, documenter et équilibrer un par un les 100 presets ; contrôle du loudness, CPU, oversampling, anti-aliasing et gestion des clics.
+11. Intégrer les builds, tests automatisés à 44,1/48/88,2/96/192 kHz, signatures Apple, notarisation et véritables installateurs via la chaîne de publication Liberty après validation.
+
+Ce projet est une **base de développement démontrable**, pas une livraison commerciale terminée.

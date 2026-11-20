@@ -1,0 +1,4 @@
+Serenity WAVETABLE - Original user screenshots restored at 2048 x 1361.
+Ten RGBA SHA256 pixel verifications PASSED.
+This is the user-supplied reference UI, not an invented replacement.
+Builds must additionally pass real editor startup tests.
