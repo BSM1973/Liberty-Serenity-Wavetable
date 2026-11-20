@@ -4,6 +4,7 @@
 #include "DSP/SerenitySpectralEditor.h"
 #include <array>
 #include <atomic>
+#include <memory>
 
 namespace serenity {
 // APVTS index: stable IDs matter for host automation and MIDI learn persistence.
@@ -100,7 +101,8 @@ private:
  std::array<std::atomic<float>,serenity::editableTotal> customPoints{};
  // Published by editor/host thread, read atomically by the audio callback.
  // Per-frame seqlock: odd while writing; even when complete. Never block/spin on audio.
- std::array<std::atomic<float>,serenity::editableTotal*serenity::customMipCount> customMipPoints{};
+ // Allocated once at construction, never from the realtime callback.
+ std::unique_ptr<std::atomic<float>[]> customMipPoints;
  std::array<std::atomic<unsigned>,serenity::editableOscillators*serenity::editableFrames> customMipVersions{};
  std::array<unsigned,serenity::editableOscillators*serenity::editableFrames> appliedMipVersions{};
  std::array<std::atomic<int>,serenity::parameterCount> controller{};
