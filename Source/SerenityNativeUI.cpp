@@ -495,6 +495,138 @@ void Painter::filters(){
  sources();
 }
 
+
+void Painter::modulation(){
+ panel(11,118,732,600,"ENVELOPES");
+ tx("ENV 1 · AMPLITUDE",581,123,143,20,11,MUTE,true);
+ for(int i=0;i<6;i++)tab(22.f+i*117.f,156,110,32,
+     ("ENV "+juce::String(i+1)).toRawUTF8(),i==0,GOLD);
+ grid(23,208,708,339,8,5);
+ const float att=val(serenity::attack),dec=val(serenity::decay),
+  sus=val(serenity::sustain),rel=val(serenity::release);
+ const float peakX=45.f+att*148.f+30.f,sustainX=peakX+dec*180.f+47.f;
+ juce::Path envelope;
+ envelope.startNewSubPath(43,506);envelope.lineTo(peakX,240);
+ envelope.cubicTo(peakX+42,260,sustainX-35,320,sustainX,506-(sus*258));
+ envelope.lineTo(343,506-sus*258);
+ envelope.cubicTo(388,506-sus*258,444,456,480+rel*200,506);
+ g.setColour(c(CYAN));g.strokePath(envelope,juce::PathStrokeType(3.f));
+ tx("NOTE ON",43,213,120,18,11,MUTE);
+ tx("NOTE OFF",314,213,150,18,11,MUTE);
+ const float envKnobs[]={60,151,240,332,421,513,603,693};
+ const char* envLabels[]={"DELAY","ATTACK","HOLD","DECAY","SUSTAIN","RELEASE","CURVE","VEL SENS"};
+ const int envParams[]={-1,serenity::attack,-1,serenity::decay,serenity::sustain,
+                        serenity::release,-1,-1};
+ for(int i=0;i<8;i++)miniKnob(envKnobs[i],582,envLabels[i],envParams[i],i>5?.35f:.5f,
+                               i>5?PURPLE:CYAN);
+ button(23,663,97,25,"LOOP");
+ tx("ROUTED TO",129,663,87,23,11,MUTE,true);
+ button(217,661,151,28,"Amplitude · always",true,PURPLE);
+ panel(755,118,732,600,"LFOS",PURPLE);
+ tx("LFO 1 · FREE ASSIGN",1292,123,166,22,11,MUTE,true);
+ for(int i=0;i<8;i++)tab(766+i*88.f,156,81,32,
+    ("LFO "+juce::String(i+1)).toRawUTF8(),i==0,GOLD);
+ waveform(767,208,708,317,0,0,PURPLE,.96f,2.f);
+ tx("SINE",787,213,135,21,11,PURPLE,true);
+ tx(juce::String(dsp.getValue(serenity::lfoRate),2)+" Hz",
+    1378,213,73,19,12,MUTE,true,2);
+ select(767,546,175,"SHAPE","Sine",PURPLE);
+ select(953,546,137,"MODE","Free",PURPLE);
+ select(1103,546,145,"DIVISION","8th",PURPLE);
+ button(1275,570,76,26,"SYNC");
+ button(1364,570,110,26,"UNIPOLAR");
+ miniKnob(803,639,"RATE",serenity::lfoRate,.50f,PURPLE);
+ miniKnob(893,639,"PHASE",-1,.00f,PURPLE);
+ miniKnob(985,639,"FADE IN",-1,.00f,PURPLE);
+ miniKnob(1074,639,"SMOOTH",-1,.00f,PURPLE);
+ tx("ROUTED TO · DRAG A SOURCE TO A KNOB",1127,621,333,29,11,MUTE);
+ rr(11,728,1476,64,7,0xff121b2au);outline(11,728,1476,64,7,STROKE);
+ tx("ROUTES",27,744,96,21,13,TYPE,true);
+ tx("0 / 64 slots",27,766,126,19,11,MUTE);
+ tx("Drag a source from the rail below onto any knob, or configure the Matrix.",
+    158,742,955,27,12,MUTE);
+ sources();
+}
+void Painter::effects(){
+ // The exact original signal flow strip occupies the first row.
+ rr(11,119,1476,34,7,0xff101827u);outline(11,119,1476,34,7,STROKE);
+ tx("SIGNAL FLOW",23,125,104,22,11,MUTE,true);
+ const char* chain[]={"DRIVE","FILTER","EQ","COMP","MOD FX","TREM/PAN","RING","DELAY","REVERB","MASTER"};
+ float xx=137.f;
+ for(int i=0;i<10;i++){
+  float w=i<4?106.f:i<8?112.f:105.f;
+  button(xx,123,w,26,chain[i],i==8||i==9,i==8?GOLD:CYAN);
+  xx+=w+5.f;if(xx>1400.f)break;
+ }
+ panel(11,160,264,225,"DRIVE");
+ panel(285,160,261,225,"FILTER");
+ panel(556,160,474,225,"EQUALIZER");
+ panel(1040,160,447,225,"COMPRESSOR");
+ waveform(21,198,241,59,5,0,CYAN,.4f);
+ waveform(297,198,237,59,0,0,CYAN,.7f);
+ graphFilter(571,198,445,86,.65f);
+ graphFilter(1052,198,423,86,.77f);
+ select(21,266,239,"TYPE","Soft");
+ select(294,266,240,"TYPE","Low Pass");
+ miniKnob(77,325,"AMOUNT",serenity::drive,.3f);
+ miniKnob(143,325,"TONE",-1,.7f);
+ miniKnob(210,325,"MIX",-1,1.f);
+ miniKnob(351,325,"CUTOFF",serenity::cutoff,.65f);
+ miniKnob(419,325,"RESO",serenity::resonance,.25f);
+ miniKnob(486,325,"MIX",-1,1.f);
+ const char* eqLabels[]={"LO GAIN","LO FREQ","MID GAIN","MID FREQ","MID Q","HI GAIN","HI FREQ"};
+ for(int i=0;i<7;i++)miniKnob(600.f+i*65.5f,325,eqLabels[i],-1,.48f,i==6?PURPLE:CYAN);
+ const char* compLabels[]={"THRESHOLD","RATIO","ATTACK","RELEASE","MAKEUP","MIX"};
+ for(int i=0;i<6;i++)miniKnob(1100.f+i*65.f,325,compLabels[i],-1,.5f);
+ panel(11,391,290,219,"MOD FX",PURPLE);
+ panel(311,391,411,219,"TREMOLO / AUTOPAN",PURPLE);
+ panel(731,391,160,219,"RING",PURPLE);
+ panel(901,391,316,219,"DELAY");
+ panel(1226,391,261,219,"MASTER",PURPLE);
+ waveform(23,425,264,55,0,0,PURPLE,.48f);
+ tab(323,427,91,31,"Tremolo",true,PURPLE);
+ tab(416,427,91,31,"Autopan",false,PURPLE);
+ waveform(515,427,193,70,0,.02f,CYAN);
+ waveform(743,429,136,61,4,0,PURPLE);
+ waveform(912,423,292,65,6,0,CYAN);
+ waveform(1237,424,237,83,0,0,PURPLE,.42f);
+ select(23,488,264,"EFFECT","Chorus",PURPLE);
+ select(323,474,181,"SHAPE","Sine",PURPLE);
+ select(912,488,143,"MODE","Stereo");
+ select(1060,488,144,"SYNC","Off");
+ for(int i=0;i<4;i++)miniKnob(58+i*66.f,548,
+  i==0?"RATE":i==1?"DEPTH":i==2?"FEEDBACK":"MIX",-1,.5f,PURPLE);
+ miniKnob(585,547,"RATE",-1,.5f,PURPLE);
+ miniKnob(651,547,"DEPTH",-1,.5f,PURPLE);
+ miniKnob(773,546,"FREQ",-1,.5f,PURPLE);
+ miniKnob(841,546,"MIX",-1,.5f,PURPLE);
+ miniKnob(955,546,"TIME",-1,.5f);
+ miniKnob(1021,546,"FEEDBACK",-1,.5f);
+ miniKnob(1086,546,"TONE",-1,.7f);
+ miniKnob(1153,546,"MIX",serenity::delayMix);
+ miniKnob(1315,547,"VOLUME",serenity::master,PURPLE);
+ miniKnob(1398,547,"WIDTH",-1,1.f,PURPLE);
+ panel(11,620,457,221,"REVERB");
+ panel(478,620,239,221,"FX LFOS",PURPLE);
+ panel(726,620,761,221,"FX MODULATION MATRIX",PURPLE);
+ waveform(25,660,428,51,4,0,CYAN,.40f);
+ select(25,718,162,"TYPE","Hall");
+ const char* reverbs[]={"DECAY","DAMPING","SIZE","PRE DLY","LOW CUT","WIDTH","MIX"};
+ for(int i=0;i<7;i++)miniKnob(51+i*63.f,779,reverbs[i],i==6?serenity::reverbMix:-1,.54f);
+ waveform(549,686,156,47,0,0,PURPLE);
+ waveform(549,762,156,47,1,0,PURPLE);
+ miniKnob(517,686,"LFO 1",-1,.3f,PURPLE);
+ miniKnob(517,762,"LFO 2",-1,.5f,PURPLE);
+ for(int row=0;row<6;row++){
+  const float y=655+row*32.f;
+  tx("S"+juce::String(row+1),735,y,32,27,11,MUTE);
+  select(772,y,195,"","Off",PURPLE);
+  select(994,y,195,"","None",CYAN);
+  level(1204,y+16,213,0.f,PURPLE);
+  tx("0.00",1435,y+5,50,25,11,MUTE);
+ }
+}
+
 } // namespace
 
 void SerenityEditor::paintNativePage(juce::Graphics& g){
