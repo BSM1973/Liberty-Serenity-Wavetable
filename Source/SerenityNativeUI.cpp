@@ -392,6 +392,109 @@ void Painter::oscillators(){
  sources();
 }
 
+
+void Painter::editor(){
+ panel(11,118,426,723,"WAVETABLE LIBRARY");
+ const char* waves[]={"Classic","Analog Saw","Pulse Sweep","Hollow Square",
+  "Reso Saw","Vowel Choir","Spectral Peak","FM Bell","FM E-Piano",
+  "Metal","Organ","Reed","Phase Choir","Sync Sweep","Chaos FM","Crystal"};
+ for(int i=0;i<4;i++) tab(23+i*99,156,91,35,juce::String::charToString((juce_wchar)('A'+i)).toRawUTF8(),
+                          i==selectedOsc,GOLD);
+ const int waveIDs[]={serenity::oscAWave,serenity::oscBWave,serenity::oscCWave,serenity::oscDWave};
+ const int selectedWave=juce::jlimit(0,16,(int)std::lround(dsp.getValue(waveIDs[selectedOsc])));
+ for(int i=0;i<16;i++){
+  int col=i%4,row=i/4;
+  float x=25+col*104.f,y=207+row*96.f;
+  const bool selected=i==selectedWave;
+  rr(x-1,y-1,91,66,5,selected?0xff4c4e49u:DARK);
+  waveform(x+2,y+3,86,56,i,0.f,selected?CYAN:MUTE,.7f,2.f);
+  if(selected)outline(x-1,y-1,91,66,5,GOLD,2);
+  tx(waves[i],x-2,y+69,94,19,11,selected?GOLD:MUTE,false,1);
+ }
+ line(23,592,425,592,STROKE);
+ tx(juce::String(selectedWave+1).paddedLeft('0',2),22,601,43,29,17,CYAN,true);
+ tx(waves[juce::jlimit(0,15,selectedWave)],56,601,254,29,17,TYPE,true);
+ button(321,604,103,28,"OSC A",true,CYAN);
+ tx("8 FRAMES · 512 SAMPLES PER FRAME",23,727,388,22,11,MUTE,true);
+ tx("BAND-LIMITED IN 9 SPECTRAL LEVELS",23,748,390,22,11,MUTE);
+ panel(446,118,701,723,"3D WAVETABLE · OSC A · ANALOG SAW");
+ button(946,122,194,23,"WARP + SHAPE PREVIEW",true,GOLD);
+ waves3d(459,156,675,416,selectedWave,val(serenity::position));
+ tx("POSITION",473,166,140,22,11,MUTE,true);
+ tx(juce::String(val(serenity::position),2),474,187,125,41,28,TYPE,true);
+ tx("FRAME "+juce::String(1.f+val(serenity::position)*7.f,1)+" / 8",
+    474,225,145,18,11,MUTE);
+ tx("ANALOG SAW",989,170,135,24,14,CYAN,true);
+ tx("DRAG UP / DOWN TO MORPH · FRAME 1 IN FRONT, FRAME 8 AT THE BACK",
+     526,535,570,23,11,MUTE,true);
+ tx("FRAMES OF THE TABLE · CLICK TO JUMP TO A FRAME",457,576,572,20,11,MUTE,true);
+ for(int frame=0;frame<8;frame++){
+  const float x=458+frame*85.f;
+  const bool active=(int)std::round(val(serenity::position)*7.f)==frame;
+  waveform(x,603,75,63,selectedWave,frame*.01f,active?GOLD:CYAN,.82f);
+  tx(juce::String(frame+1),x+20,663,36,17,10,active?GOLD:MUTE,true,1);
+ }
+ knob(498,714,26,"POSITION",serenity::position,CYAN);
+ select(569,696,157,"WARP MODE","Off");
+ knob(796,714,27,"WARP",-1,CYAN);
+ select(862,696,157,"SHAPE MODE","Off");
+ knob(1092,714,27,"SHAPE",-1,CYAN);
+ panel(1157,118,330,295,"HARMONICS");
+ grid(1169,157,307,221,8,5);
+ const auto harmonic=dsp.getCustomHarmonics(selectedOsc,4);
+ const float hbase=366.f;
+ float peak=.001f;for(auto v:harmonic)peak=std::max(peak,v);
+ for(int i=0;i<32;i++){
+  const float amp=clamp(harmonic[(size_t)i]/peak);
+  rect(1200+i*8.3f,hbase-amp*188,5.2f,std::max(2.f,amp*188),CYAN);
+ }
+ tx("1         8          16         24        32",1190,375,286,19,10,MUTE);
+ tx("HARMONIC 1–32 · dB BELOW THE STRONGEST",1167,388,318,20,10,MUTE,true);
+ panel(1157,422,330,219,"OUTPUT WAVEFORM");
+ waveform(1169,462,306,142,selectedWave,0,CYAN,.96f);
+ tx("GREY = TABLE · COLOUR = AFTER WARP + SHAPE",1166,607,310,21,10,MUTE);
+ panel(1157,650,330,191,"POSITION SWEEP",PURPLE);
+ button(1169,689,305,34,"SWEEP POSITION WITH LFO 1",true,PURPLE);
+ knob(1205,769,23,"LFO 1 RATE",serenity::lfoRate,PURPLE);
+ select(1261,739,122,"LFO 1 SHAPE","Sine",PURPLE);
+ tx("DEPTH APPEARS",1388,749,87,21,10,MUTE);
+ tx("ONCE ROUTED",1388,770,87,21,10,MUTE);
+}
+void Painter::filters(){
+ panel(11,118,1476,445,"FILTER RESPONSE");
+ tx("Filter 1 · LP24",25,157,156,21,12,CYAN);
+ tx("Filter 2 · LP12",186,157,164,21,12,PURPLE);
+ tx("Combined · F1 → F2",365,157,219,21,12,TYPE);
+ tx("ROUTING",1190,156,69,22,11,MUTE,true);
+ button(1266,156,106,31,"Serial",dsp.getValue(serenity::filterRouting)<.5f,CYAN);
+ button(1372,156,104,31,"Parallel",dsp.getValue(serenity::filterRouting)>.5f,CYAN);
+ graphFilter(22,190,1454,360,val(serenity::cutoff),
+            dsp.getValue(serenity::filter2Enabled)>.5f?val(serenity::filter2Cutoff):-1.f);
+ const float lx[]={76,181,315,445,579,712,856,997,1123,1269,1416};
+ const char* axis[]={"20","50","100","200","500","1k","2k","5k","10k","15k","20k"};
+ for(int i=0;i<11;i++)tx(axis[i],lx[i]-11,526,58,23,10,MUTE);
+ panel(11,573,733,220,"FILTER 1");
+ panel(755,573,732,220,"FILTER 2",PURPLE);
+ button(674,578,56,24,"ON",true,GOLD);
+ button(1418,578,57,24,dsp.getValue(serenity::filter2Enabled)>.5f?"ON":"OFF",
+        dsp.getValue(serenity::filter2Enabled)>.5f,PURPLE);
+ select(21,605,209,"TYPE","LP 24");
+ select(768,605,204,"TYPE","LP 12",PURPLE);
+ const float x1[]={63,149,233,328,399,467,531,602,668};
+ const float x2[]={803,890,977,1073,1140,1207,1276,1344,1411};
+ const char* labels[]={"CUTOFF","RESONANCE","DRIVE","ENV AMT","KEY TRK","VEL AMT","MIX","SHAPE","SPREAD"};
+ for(int i=0;i<9;i++){
+  const int p1=i==0?serenity::cutoff:i==1?serenity::resonance:-1;
+  const int p2=i==0?serenity::filter2Cutoff:i==1?serenity::filter2Resonance:
+                i==6?serenity::filter2Mix:-1;
+  knob(x1[i],680,i<3?29.f:19.f,labels[i],p1,CYAN);
+  knob(x2[i],680,i<3?29.f:19.f,labels[i],p2,PURPLE);
+ }
+ tx("Env Amt sweeps the cutoff with Envelope 2 (±5 octaves).",24,760,620,22,11,MUTE);
+ tx("Filter 2 can operate in series or in parallel.",769,760,585,22,11,MUTE);
+ sources();
+}
+
 } // namespace
 
 void SerenityEditor::paintNativePage(juce::Graphics& g){
