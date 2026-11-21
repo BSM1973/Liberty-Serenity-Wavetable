@@ -19,13 +19,16 @@ public:
  void mouseDoubleClick(const juce::MouseEvent&) override;
  void mouseMove(const juce::MouseEvent&) override;
  void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
+ bool keyPressed(const juce::KeyPress&) override;
 private:
  struct Hotspot {float x,y,r;int parameter;};
  SerenityAudioProcessor& synth;
  juce::TextEditor search;
  std::unique_ptr<juce::FileChooser> fileChooser;
  int tab=0,category=0,listOffset=0,matrixPage=0,selectedParameter=-1;
- int draggedParameter=-1,selectedOsc=0;
+ int draggedParameter=-1,selectedOsc=0,activeAB=0;
+ std::array<juce::MemoryBlock,2> abStates;
+ std::vector<juce::MemoryBlock> undoHistory,redoHistory;
  int sequencePage=0,sequenceDragLane=-1;
  int selectedCustomFrame=4,customDrawLastSample=-1;
  float customDrawLastValue=0.f;
@@ -58,6 +61,12 @@ private:
  void showSequenceRateMenu();
  void showSequenceBankMenu();
  void showRouteMenu(int slot,bool source);
+ void showWaveSelectMenu(int osc);
+ void showOscTransformMenu(int osc,bool warp);
+ void rememberUndo();
+ void undoChange();
+ void redoChange();
+ void switchAB(int target);
  void paintInteraction(juce::Graphics&);
  void paintTabTitle(juce::Graphics&,int,float,float,const char*,const char*,float=220);
  void drawText(juce::Graphics&,const juce::String&,float,float,float,float,
