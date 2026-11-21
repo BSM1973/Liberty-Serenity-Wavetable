@@ -528,8 +528,14 @@ void Painter::editor(){
  knob(1092,714,27,"SHAPE",serenity::oscAShape+selectedOsc,CYAN);
  panel(1157,118,330,295,"HARMONICS");
  grid(1169,157,307,221,8,5);
- const auto harmonic=dsp.getCustomHarmonics(selectedOsc,juce::jlimit(0,7,
-                                      (int)std::round(val(serenity::position)*7.f)));
+ // Analyze the same factory/custom audio cycle that is actually displayed.
+ // Do not display the idle custom sine harmonics when a factory table is selected.
+ serenity::spectral::Frame harmonicFrame{};
+ for(int index=0;index<serenity::spectral::fftSize;index++)
+  harmonicFrame[(size_t)index]=dsp.getWavetablePreview(
+    selectedOsc,selectedWave,val(serenity::position),
+    (float)index/serenity::spectral::fftSize,true);
+ const auto harmonic=serenity::spectral::analyze(harmonicFrame);
  const float hbase=366.f;
  float peak=.001f;for(auto v:harmonic)peak=std::max(peak,v);
  for(int i=0;i<32;i++){
