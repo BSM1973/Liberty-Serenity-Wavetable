@@ -752,6 +752,131 @@ void Painter::matrix(){
  sources();
 }
 
+
+void Painter::presets(){
+ panel(11,118,245,722,"BROWSE");
+ const char* labels[]={"All","Favorites","Bass","Pads","Cinematic",
+                        "Leads","Plucks","Keys","Arps","EDM","Ambient","Experimental","User"};
+ const char* french[]={"Tous","Favoris","Basses","Nappes","Cinématique",
+                        "Leads","Plucks","Claviers","Arpèges","EDM","Ambient","Expérimental","Utilisateur"};
+ for(int i=0;i<13;i++){
+  const float y=158.f+i*42.2f;
+  if(i==0){rr(23,y,222,34,5,0xff3f4348u);line(23,y,23,y+34,GOLD,3.f);}
+  tx(fr?french[i]:labels[i],38,y+2,161,27,14,i==0?GOLD:TYPE,i==0);
+ }
+ panel(268,118,706,722,"LIBRARY · 100 SOUNDS");
+ rr(283,157,674,38,5,DARK);outline(283,157,674,38,5,STROKE);
+ tx(tr("Search name, tag, author...","Rechercher par nom, étiquette ou auteur..."),
+    323,164,600,23,13,MUTE);
+ rr(282,205,676,587,7,DARK);outline(282,205,676,587,7,STROKE);
+ const auto& lib=serenity::factoryPresets();
+ for(int i=0;i<34;i++){
+  const int col=i/17,row=i%17;
+  if((size_t)i>=lib.size())continue;
+  float x=301.f+col*327.f,y=211.f+row*33.7f;
+  tx(dsp.isFavorite(i)?"F":"·",x,y,25,26,12,MUTE,true);
+  tx(u(lib[(size_t)i].name),x+26,y,193,26,13,TYPE,true);
+  tx(u(lib[(size_t)i].category).toUpperCase(),x+213,y,93,26,10,MUTE,true,2);
+ }
+ panel(986,118,501,722,"SELECTED PRESET");
+ const int cur=juce::jlimit(0,(int)lib.size()-1,dsp.currentPreset());
+ tx(u(lib[(size_t)cur].name),1005,170,455,35,17,TYPE,true);
+ line(1006,210,1467,210,STROKE);
+ tx("IMPORT / EXPORT",1006,232,382,27,12,MUTE,true);
+ rr(1006,258,459,464,5,DARK);outline(1006,258,459,464,5,STROKE);
+ tx(tr("Import or export a complete Serenity preset.","Importer ou exporter un preset Serenity."),
+    1020,276,422,27,12,MUTE);
+ tx("Preset, synthesis parameters and user wavetable are saved together.",
+    1020,302,416,41,12,MUTE);
+ button(1006,737,105,33,"EXPORT");
+ button(1117,737,104,33,"IMPORT");
+ button(1226,737,94,33,"CLEAR");
+}
+void Painter::settings(){
+ panel(11,118,732,365,"PERFORMANCE");
+ tx("TUNING & RESPONSE",22,155,396,23,11,MUTE,true);
+ line(21,165,730,165,STROKE);
+ const char* names[]={"MASTER TUNE","BEND RANGE","VEL CURVE","VOICE LEVEL","TEMPO"};
+ for(int i=0;i<5;i++){
+  const float x=88.f+143.f*i;
+  knob(x,218,30.f,names[i],i==3?serenity::master:-1,
+       i%2?PURPLE:CYAN,i==3?.8f:.50f);
+ }
+ tx("Tunes every voice · pitch bend · touch curve · per-voice level · tempo.",
+    23,310,700,25,11,MUTE);
+ tx("PERFORMANCE INPUTS",23,340,443,25,11,MUTE,true);
+ tx("AFTERTOUCH",22,383,145,22,11,MUTE,true);
+ level(20,405,301,.30f,PURPLE);
+ button(337,384,162,29,"SUSTAIN PEDAL");
+ tx("Both also follow your keyboard: CC 64, channel pressure and pitch wheel.",
+    530,382,181,60,11,MUTE);
+ panel(754,118,733,365,"MIDI LEARN",PURPLE);
+ button(767,158,147,32,"LEARN: OFF",dsp.currentlyLearning()>=0,PURPLE);
+ tx(tr("Learn is off. Mapped controllers keep working.",
+       "Apprentissage inactif. Les contrôleurs mémorisés fonctionnent."),
+    929,159,515,32,12,MUTE);
+ button(766,199,133,28,"1 ARM LEARN");
+ button(905,199,170,28,"2 CLICK CONTROL");
+ button(1081,199,257,28,"3 MOVE A CC KNOB OR FADER");
+ rr(767,239,707,173,5,DARK);outline(767,239,707,173,5,STROKE);
+ tx("CONTROLLER",782,243,140,25,10,MUTE,true);
+ tx("PARAMETER",928,243,190,25,10,MUTE,true);
+ int count=0;
+ for(int i=0;i<serenity::parameterCount;i++){
+  const int cc=dsp.mappedCC(i);
+  if(cc<0)continue;
+  const int row=count++;
+  if(row>=6)break;
+  tx("CC "+juce::String(cc),779,272+row*22,128,20,11,CYAN);
+  tx(u(serenity::specs[(size_t)i].id),922,272+row*22,410,20,11,TYPE);
+ }
+ if(count==0)
+  tx(tr("No controllers learned yet.","Aucun contrôleur associé."),
+     1041,304,273,24,13,MUTE,false,1);
+ tx(juce::String(count)+tr(" mappings saved in the project.",
+                           " associations enregistrées dans le projet."),
+    767,425,515,23,12,MUTE);
+ button(1383,422,88,28,"CLEAR ALL");
+ panel(11,495,732,345,"KEYBOARD & MOUSE",GOLD);
+ tx("SHORTCUTS",22,535,330,26,12,MUTE,true);
+ const char* shortcuts[]={"CTRL/⌘ + Z","CTRL/⌘ + S","CTRL/⌘ + F",
+                           "[  ]","ALT  1..0"};
+ const char* functions[]={"Undo","Save preset","Search presets","Previous / next preset","Switch tab"};
+ for(int i=0;i<5;i++){
+  button(23,565+i*38.f,131,26,shortcuts[i]);
+  tx(functions[i],202,565+i*38.f,302,25,12,MUTE);
+ }
+ tx("CONTROLS",396,535,322,23,12,MUTE,true);
+ const char* methods[]={"Drag","Shift + drag","Wheel","Double click","Right click"};
+ const char* descriptions[]={"Change a value","Fine adjust","Step up or down","Reset to default","Enter value / MIDI learn"};
+ for(int i=0;i<5;i++){
+  button(399,566+i*38.f,121,27,methods[i]);
+  tx(descriptions[i],570,566+i*38.f,147,26,11,MUTE);
+ }
+ panel(754,495,733,345,"ABOUT",PURPLE);
+ juce::Path mark;
+ mark.startNewSubPath(805,538);mark.lineTo(839,567);mark.lineTo(805,596);
+ mark.lineTo(772,567);mark.closeSubPath();
+ g.setColour(c(CYAN));g.strokePath(mark,juce::PathStrokeType(2.5f));
+ tx("S E R E N I T Y  W A V E T A B L E",860,536,583,34,21,TYPE,true);
+ tx("BY LIBERTY MUSIC SOFTWARE",863,574,532,25,12,GOLD,true);
+ tx("Shape the Sound. Feel the Freedom.",863,605,483,25,13,MUTE);
+ line(768,639,1472,639,STROKE);
+ const char* left[]={"GENERATORS","WAVETABLES","FILTERS","ENVELOPES","LFOS"};
+ const char* value[]={"3 wavetable + 1 multi-mode","16 factory tables, custom edits",
+                      "2 multimode filters","6 DAHDSR","8 tempo-syncable"};
+ for(int i=0;i<5;i++){
+  tx(left[i],767,654+i*33.f,137,24,11,MUTE,true);
+  tx(value[i],906,654+i*33.f,255,24,11,TYPE);
+ }
+ const char* right[]={"MOD MATRIX","EFFECTS","SEQUENCER","PRESETS","VOICES"};
+ const char* rv[]={"64 modulation slots","FX rack","64 steps","100 factory sounds","16/32 targets"};
+ for(int i=0;i<5;i++){
+  tx(right[i],1170,654+i*33.f,116,24,11,MUTE,true);
+  tx(rv[i],1290,654+i*33.f,185,24,11,TYPE);
+ }
+}
+
 } // namespace
 
 void SerenityEditor::paintNativePage(juce::Graphics& g){
