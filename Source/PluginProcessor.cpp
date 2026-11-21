@@ -56,6 +56,7 @@ SerenityAudioProcessor::SerenityAudioProcessor():
   modAmounts[(size_t)i].store(0);
  }
  for(auto &f:favorites)f.store(false);
+ for(auto &sample:outputScope)sample.store(0.f,std::memory_order_relaxed);
  for(int o=0;o<serenity::editableOscillators;o++)
   for(int f=0;f<serenity::editableFrames;f++)
    for(int i=0;i<serenity::editableSamples;i++) {
@@ -372,6 +373,14 @@ void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce:
  float peak=0;
  for(int n=0;n<buffer.getNumSamples();n++) peak=std::max(peak,std::max(std::abs(l[n]),std::abs(r[n])));
  outputMeter.store(peak,std::memory_order_relaxed);
+ const int numSamples=buffer.getNumSamples();
+ if(numSamples>0){
+  for(int k=0;k<256;k++){
+   const int index=(k*(numSamples-1))/255;
+   outputScope[(size_t)k].store(.5f*(l[index]+r[index]),
+                                std::memory_order_relaxed);
+  }
+ }
 }
 bool SerenityAudioProcessor::isFavorite(int p) const noexcept {
  return p>=0&&p<100?favorites[(size_t)p].load():false;
