@@ -17,6 +17,15 @@ enum Parameter : int {
  polyphony,filter2Cutoff,filter2Resonance,filter2Mix,filter2Enabled,filterRouting,
  macroBrightness, macroMovement, macroWarmth, macroSpace,
  macroWidth, macroTexture, macroEnergy, macroSerenity,
+ // New parameters are appended: all existing parameter IDs and indices stay stable.
+ oscAOctave,oscBOctave,oscCOctave,oscDOctave,
+ oscASemi,oscBSemi,oscCSemi,oscDSemi,
+ oscAFine,oscBFine,oscCFine,oscDFine,
+ oscAPan,oscBPan,oscCPan,oscDPan,
+ oscAWarp,oscBWarp,oscCWarp,oscDWarp,
+ oscAShape,oscBShape,oscCShape,oscDShape,
+ oscAWarpMode,oscBWarpMode,oscCWarpMode,oscDWarpMode,
+ oscAShapeMode,oscBShapeMode,oscCShapeMode,oscDShapeMode,
  parameterCount
 };
 struct ParamSpec { const char *id; float lo, hi, initial; };
@@ -54,6 +63,11 @@ public:
  // bounded snapshot at audio block boundaries without heap allocations.
  void setCustomPoint(int oscillator,int frame,int sample,float value) noexcept;
  float getCustomPoint(int oscillator,int frame,int sample) const noexcept;
+ // Read-only live preview: exact factory frames / editable samples.
+ // No screenshot, approximation or audio-thread mutation.
+ float getWavetablePreviewPoint(int osc,int frame,int sample) const noexcept;
+ float getWavetablePreview(float oscIndex,float position,float phase,
+                           bool applyTransforms=true) const noexcept;
  void commitCustomFrame(int oscillator,int frame,const std::array<float,serenity::editableSamples>& points) noexcept;
  void normalizeCustomFrame(int oscillator,int frame) noexcept;
  void removeCustomDc(int oscillator,int frame) noexcept;
