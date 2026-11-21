@@ -154,23 +154,67 @@ struct Painter {
   if(frames>1.f){g.setColour(c(color).withAlpha(.10f));g.strokePath(path,juce::PathStrokeType(5.f));}
   g.setColour(c(color));g.strokePath(path,juce::PathStrokeType(2.f));
  }
- void waves3d(float x,float y,float w,float h,int shape,float position){
+ // Native oscilloscope for an actual factory/custom table (not a fake drawn sine).
+ void wavetableWave(float x,float y,float w,float h,int osc,int wave,float frame,
+                    juce::uint32 colour=CYAN,float amplitude=1.f,bool effected=true){
+  grid(x,y,w,h,4,2);
+  juce::Graphics::ScopedSaveState clipping(g);
+  g.reduceClipRegion(juce::Rectangle<int>((int)x+2,(int)y+2,(int)w-4,(int)h-4));
+  juce::Path trace,fill;
+  const float mid=y+h*.5f;
+  for(int i=0;i<=160;i++){
+   const float t=(float)i/160.f;
+   const float sample=dsp.getWavetablePreview(osc,wave,frame,t,effected);
+   const float px=x+7.f+(w-14.f)*t;
+   const float py=mid-juce::jlimit(-1.2f,1.2f,sample)*h*.39f*amplitude;
+   if(i==0){trace.startNewSubPath(px,py);fill.startNewSubPath(px,mid);fill.lineTo(px,py);}
+   else{trace.lineTo(px,py);fill.lineTo(px,py);}
+  }
+  fill.lineTo(x+w-7,mid);fill.closeSubPath();
+  g.setGradientFill(juce::ColourGradient(c(colour).withAlpha(.19f),x,y,
+                                           c(colour).withAlpha(.025f),x,y+h,false));
+  g.fillPath(fill);
+  g.setColour(c(colour));g.strokePath(trace,juce::PathStrokeType(2.f));
+ }
+ // The eight independent frames are sampled directly from the sounding engine.
+ // All four generators, custom tables and warp/shape transforms are reflected.
+ void waves3d(float x,float y,float w,float h,int osc,int wave,float position){
   grid(x,y,w,h,7,5);
+  juce::Graphics::ScopedSaveState clip(g);
+  g.reduceClipRegion(juce::Rectangle<int>((int)x+3,(int)y+3,(int)w-6,(int)h-6));
+  // Perspective graph backdrop and position plane, as in the supplied original UI.
+  const float paneX=x+w*.14f,paneY=y+h*.32f;
+  g.setColour(c(CYAN).withAlpha(.075f));
+  g.fillRect(paneX,paneY,w*.72f,h*.43f);
+  g.setColour(c(CYAN).withAlpha(.5f));
+  g.drawRect(paneX,paneY,w*.72f,h*.43f,1.f);
+  const float selected=clamp(position)*7.f;
+  const int chosen=juce::jlimit(0,7,(int)std::round(selected));
   for(int layer=7;layer>=0;layer--){
-   const float off=(float)layer/7.f;
-   juce::Path path;
-   for(int k=0;k<=140;k++){
-    const float t=(float)k/140.f,angle=2*pi*(t+off*.012f);
-    float sample=std::sin(angle)+(.20f+off*.15f)*std::sin(2*angle);
-    if(shape==3)sample=std::tanh(4.f*std::sin(angle));
-    if(shape==2)sample=2.f*(t-.5f);
-    float xx=x+18+t*(w-66)+off*29;
-    float yy=y+h*.67f-layer*(h*.07f)-sample*(h*.145f);
-    if(k==0)path.startNewSubPath(xx,yy);else path.lineTo(xx,yy);
+   const float depth=(float)layer/7.f;
+   const float left=x+22.f+depth*w*.095f;
+   const float width=w*.825f;
+   const float baseline=y+h*.78f-depth*h*.51f;
+   const float amplitude=h*.20f;
+   juce::Path trace,area;
+   for(int i=0;i<=170;i++){
+    const float phase=(float)i/170.f;
+    const float sample=dsp.getWavetablePreview(osc,wave,depth,phase,true);
+    const float px=left+phase*width,py=baseline-sample*amplitude;
+    if(i==0){trace.startNewSubPath(px,py);area.startNewSubPath(px,baseline);area.lineTo(px,py);}
+    else{trace.lineTo(px,py);area.lineTo(px,py);}
    }
-   const bool selected=std::abs((float)layer/7.f-position)<.10f;
-   g.setColour(c(selected?0xffbadfeau:CYAN).withAlpha(selected?1.f:.35f+(.055f*layer)));
-   g.strokePath(path,juce::PathStrokeType(selected?2.4f:1.5f));
+   area.lineTo(left+width,baseline);
+   area.closeSubPath();
+   const bool active=layer==chosen;
+   const float alpha=active?.29f:.055f+(.027f*(7-layer));
+   g.setGradientFill(juce::ColourGradient(c(CYAN).withAlpha(alpha),
+       left,y+h*.15f,c(CYAN).withAlpha(.018f),left,y+h*.95f,false));
+   g.fillPath(area);
+   g.setColour(c(active?0xffc8f4ffu:CYAN).withAlpha(active?1.f:.35f+.042f*(7-layer)));
+   g.strokePath(trace,juce::PathStrokeType(active?2.6f:1.6f));
+   const float labelX=x+w*.935f-depth*w*.045f;
+   tx(juce::String(layer+1),labelX,baseline-8,19,20,10,active?GOLD:MUTE,true,1);
   }
  }
  void graphFilter(float x,float y,float w,float h,float f1,float f2=-1.f){
@@ -334,14 +378,15 @@ void Painter::oscillators(){
   "Phase Choir","Sync Sweep","Chaos FM","Crystal","Custom"};
  for(int i=0;i<4;i++){
   const float y=118.f+i*129.f;
-  rr(11,y,245,120,9,PANEL);outline(11,y,245,120,9,i==0?GOLD:STROKE,i==0?2.f:1.f);
-  rr(19,y+7,24,24,12,i==0?CYAN:0xff78869bu);
+  rr(11,y,245,120,9,PANEL);outline(11,y,245,120,9,i==selectedOsc?GOLD:STROKE,i==selectedOsc?2.f:1.f);
+  rr(19,y+7,24,24,12,i==selectedOsc?CYAN:0xff78869bu);
   tx(juce::String::charToString((juce_wchar)('A'+i)),19,y+6,24,24,12,DARK,true,1);
   const int wave=juce::jlimit(0,16,(int)std::lround(dsp.getValue(waves[i])));
-  tx(waveNames[wave],50,y+7,128,23,13,i==0?GOLD:TYPE,true);
+  tx(waveNames[wave],50,y+7,128,23,13,i==selectedOsc?GOLD:TYPE,true);
   const bool active=dsp.getValue(levels[i])>.001f;
   button(191,y+6,56,28,active?"ON":"OFF",active,CYAN);
-  waveform(21,y+42,222,49,wave,i*.03f,i==0?CYAN:PURPLE,active?.84f:.4f);
+  wavetableWave(21,y+42,222,49,i,wave,val(serenity::position),
+                 i==selectedOsc?CYAN:PURPLE,active?.95f:.45f);
   tx("LEVEL",22,y+99,45,17,11,MUTE,true);
   tx(juce::String((int)std::round(100.f*val(levels[i])))+"%",66,y+99,66,17,11,MUTE);
   tx("F1",226,y+99,25,16,10,MUTE);
@@ -353,7 +398,8 @@ void Painter::oscillators(){
       i==selectedOsc,GOLD);
  }
  const float position=val(serenity::position);
- waves3d(279,156,667,457,juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),position);
+ waves3d(279,156,667,457,selectedOsc,
+        juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),position);
  tx("POSITION",293,169,135,20,11,MUTE,true);
  tx(juce::String(position,2),293,191,123,45,28,TYPE,true);
  tx("FRAME "+juce::String(1.f+7.f*position,1)+" / 8",293,233,150,22,11,MUTE);
@@ -369,8 +415,8 @@ void Painter::oscillators(){
  knob(1288,317,28,"SHAPE",-1,CYAN,.50f);
  knob(1416,317,28,"LEVEL",levels[selectedOsc],CYAN);
  tx("ONE CYCLE  —  TABLE  —  AFTER WARP + SHAPE",990,388,465,21,11,MUTE,true);
- waveform(982,417,490,184,juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),
-          position*.03f,CYAN,.9f,2.f);
+ wavetableWave(982,417,490,184,selectedOsc,
+          juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),position,CYAN,.95f);
  panel(11,638,365,155,"PITCH · PAN");
  miniKnob(65,708,"OCTAVE",-1,.5f);
  miniKnob(150,708,"SEMI",-1,.5f);
@@ -408,7 +454,7 @@ void Painter::editor(){
   float x=25+col*104.f,y=207+row*96.f;
   const bool selected=i==selectedWave;
   rr(x-1,y-1,91,66,5,selected?0xff4c4e49u:DARK);
-  waveform(x+2,y+3,86,56,i,0.f,selected?CYAN:MUTE,.7f,2.f);
+  wavetableWave(x+2,y+3,86,56,selectedOsc,i,.5f,selected?CYAN:MUTE,.70f,false);
   if(selected)outline(x-1,y-1,91,66,5,GOLD,2);
   tx(waves[i],x-2,y+69,94,19,11,selected?GOLD:MUTE,false,1);
  }
@@ -420,7 +466,7 @@ void Painter::editor(){
  tx("BAND-LIMITED IN 9 SPECTRAL LEVELS",23,748,390,22,11,MUTE);
  panel(446,118,701,723,"3D WAVETABLE · OSC A · ANALOG SAW");
  button(946,122,194,23,"WARP + SHAPE PREVIEW",true,GOLD);
- waves3d(459,156,675,416,selectedWave,val(serenity::position));
+ waves3d(459,156,675,416,selectedOsc,selectedWave,val(serenity::position));
  tx("POSITION",473,166,140,22,11,MUTE,true);
  tx(juce::String(val(serenity::position),2),474,187,125,41,28,TYPE,true);
  tx("FRAME "+juce::String(1.f+val(serenity::position)*7.f,1)+" / 8",
@@ -432,7 +478,7 @@ void Painter::editor(){
  for(int frame=0;frame<8;frame++){
   const float x=458+frame*85.f;
   const bool active=(int)std::round(val(serenity::position)*7.f)==frame;
-  waveform(x,603,75,63,selectedWave,frame*.01f,active?GOLD:CYAN,.82f);
+  wavetableWave(x,603,75,63,selectedOsc,selectedWave,(float)frame/7.f,active?GOLD:CYAN,.82f,false);
   tx(juce::String(frame+1),x+20,663,36,17,10,active?GOLD:MUTE,true,1);
  }
  knob(498,714,26,"POSITION",serenity::position,CYAN);
@@ -452,7 +498,7 @@ void Painter::editor(){
  tx("1         8          16         24        32",1190,375,286,19,10,MUTE);
  tx("HARMONIC 1–32 · dB BELOW THE STRONGEST",1167,388,318,20,10,MUTE,true);
  panel(1157,422,330,219,"OUTPUT WAVEFORM");
- waveform(1169,462,306,142,selectedWave,0,CYAN,.96f);
+ wavetableWave(1169,462,306,142,selectedOsc,selectedWave,val(serenity::position),CYAN,.96f);
  tx("GREY = TABLE · COLOUR = AFTER WARP + SHAPE",1166,607,310,21,10,MUTE);
  panel(1157,650,330,191,"POSITION SWEEP",PURPLE);
  button(1169,689,305,34,"SWEEP POSITION WITH LFO 1",true,PURPLE);
