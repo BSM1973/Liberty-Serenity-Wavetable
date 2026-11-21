@@ -460,8 +460,12 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
    tab=i;resized();repaint();return;
   }
  }
- if(p.x>255&&p.x<308&&p.y>=8&&p.y<52){changeLanguage();return;}
+ if(p.x>=1023&&p.x<1053&&p.y>=8&&p.y<52){changeLanguage();return;}
  if(p.y<58){
+  if(p.x>=786&&p.x<858){switchAB(p.x<821?0:1);return;}
+  if(p.x>=871&&p.x<907){undoChange();return;}
+  if(p.x>=913&&p.x<949){redoChange();return;}
+  if(p.x>=684&&p.x<719){synth.toggleFavorite(synth.currentPreset());repaint();return;}
   if(p.x>725&&p.x<771){savePatch(false);return;}
   if(p.x>956&&p.x<1020){
    if(selectedParameter>=0){
@@ -474,6 +478,23 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   if(p.x>637&&p.x<680){selectPreset((synth.currentPreset()+1)%100);return;}
  }
  if((tab==5||tab==6)&&sequenceClick(p))return;
+ if(tab==0&&p.y>=120&&p.y<151&&p.x>=801&&p.x<942){
+  selectedOsc=juce::jlimit(0,3,(int)((p.x-801)/35.f));
+  repaint();return;
+ }
+ if(tab==0&&p.x>=981&&p.x<=1223&&p.y>=178&&p.y<=216){
+  showWaveSelectMenu(selectedOsc);return;
+ }
+ if(tab==0&&p.y>=243&&p.y<=280){
+  if(p.x>=981&&p.x<=1224){showOscTransformMenu(selectedOsc,true);return;}
+  if(p.x>=1233&&p.x<=1475){showOscTransformMenu(selectedOsc,false);return;}
+ }
+ if(tab==0&&p.x>=50&&p.x<=185&&p.y>=118&&p.y<625){
+  for(int i=0;i<4;i++){
+   const float y=118.f+i*129.f;
+   if(p.y>=y+6&&p.y<y+34){showWaveSelectMenu(i);return;}
+  }
+ }
  if(tab==0&&p.x>=20&&p.x<186&&p.y>121&&p.y<624){
   selectedOsc=juce::jlimit(0,3,(int)((p.y-121)/129.f));
   showStatus(tr("Oscillateur sélectionné : ","Selected oscillator: ")+
@@ -481,6 +502,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   repaint();return;
  }
  if(tab==0&&p.x>=278&&p.x<956&&p.y>=156&&p.y<612){
+  rememberUndo();
   selectedParameter=serenity::position;
   draggedParameter=serenity::position;
   startValue=synth.getValue(serenity::position);
@@ -490,11 +512,18 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   int which=juce::jlimit(0,3,(int)((p.y-121)/129.f));
   const int levels[]={serenity::oscALevel,serenity::oscBLevel,serenity::oscCLevel,serenity::oscDLevel};
   const bool enabled=synth.getValue(levels[which])>.001f;
+  rememberUndo();
   synth.setValue(levels[which],enabled?0.f:.65f);
   showStatus(juce::String("OSC ")+juce::String::charToString((juce_wchar)('A'+which))+
              (enabled?" OFF":" ON"));return;
  }
  if(tab==1){
+  if(p.x>=570&&p.x<=726&&p.y>=718&&p.y<=754){
+   showOscTransformMenu(selectedOsc,true);return;
+  }
+  if(p.x>=862&&p.x<=1019&&p.y>=718&&p.y<=754){
+   showOscTransformMenu(selectedOsc,false);return;
+  }
   // Use the original HARMONICS panel for additive spectral editing.
   if(p.x>=1171&&p.x<=1468&&p.y>=161&&p.y<=374){
    if(e.mods.isRightButtonDown()){showWavetableMenu();return;}
@@ -527,6 +556,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
    int col=juce::jlimit(0,3,(int)((p.x-24)/103.5f));
    int row=juce::jlimit(0,3,(int)((p.y-205)/94.9f));
    const int waves[]={serenity::oscAWave,serenity::oscBWave,serenity::oscCWave,serenity::oscDWave};
+   rememberUndo();
    synth.setValue(waves[selectedOsc],(float)(row*4+col));repaint();return;
   }
   if(p.x>=458&&p.x<1133&&p.y>=599&&p.y<=665){
@@ -600,6 +630,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
  if(param>=0){
   selectedParameter=param;
   if(e.mods.isRightButtonDown()){showParameterMenu(param);return;}
+  rememberUndo();
   draggedParameter=param;startValue=synth.getValue(param);repaint();return;
  }
 }
