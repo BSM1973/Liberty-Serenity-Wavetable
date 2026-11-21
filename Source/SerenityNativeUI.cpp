@@ -21,9 +21,9 @@ struct Painter {
  SerenityAudioProcessor& dsp;
  bool fr;
  int selectedOsc;
- int selectedPage;
- Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc,int page):
-  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc),selectedPage(page){}
+ int selectedPage,activeAB;
+ Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc,int page,int ab):
+  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc),selectedPage(page),activeAB(ab){}
  C c(juce::uint32 v){return C(v);}
  juce::String tr(const char* en,const char* french)const{
   return u(fr?french:en);
@@ -304,11 +304,12 @@ void Painter::header(){
  button(640,7,35,42,">");
  button(684,7,34,42,dsp.isFavorite(ix)?"★":"☆");
  button(730,7,34,42,"S");
- button(786,10,34,35,"A",true,GOLD);
- button(824,10,34,35,"B");
+ button(786,10,34,35,"A",activeAB==0,GOLD);
+ button(824,10,34,35,"B",activeAB==1,GOLD);
  button(871,10,35,35,"U");
  button(914,10,35,35,"R");
  button(960,9,60,38,"LEARN",dsp.currentlyLearning()>=0,PURPLE);
+ button(1024,12,29,32,fr?"FR":"EN",true,GOLD);
  tx("MASTER",1053,7,77,18,10,MUTE,true);
  level(1056,34,119,val(serenity::master));
  tx("TUNE",1187,9,65,16,10,MUTE,true);
@@ -420,30 +421,35 @@ void Painter::oscillators(){
       i==selectedOsc,GOLD);
  }
  const float position=val(serenity::position);
+ const int currentWave=juce::jlimit(0,16,(int)std::round(dsp.getValue(waves[selectedOsc])));
  waves3d(279,156,667,457,selectedOsc,
         juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),position);
  tx("POSITION",293,169,135,20,11,MUTE,true);
  tx(juce::String(position,2),293,191,123,45,28,TYPE,true);
  tx("FRAME "+juce::String(1.f+7.f*position,1)+" / 8",293,233,150,22,11,MUTE);
- tx("ANALOG SAW",775,174,154,25,13,CYAN,true,2);
+ tx(waveNames[currentWave],765,174,164,25,13,CYAN,true,2);
  tx("DRAG UP / DOWN TO MORPH THROUGH THE 8 FRAMES",409,580,472,23,12,MUTE,true);
  panel(969,118,518,510,"TABLE · WARP · SHAPE");
  select(981,158,241,"TABLE",u(waveNames[juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc]))]));
  select(1233,158,242,"ROUTE","Filter 1");
- select(981,222,241,"WARP MODE","Off");
- select(1233,222,242,"SHAPE MODE","Off");
+ const char* warpModes[]={"Off","Bend","PWM","Sync"};
+ const char* shapeModes[]={"Off","Saturate","Wavefold","Quantize"};
+ select(981,222,241,"WARP MODE",
+        warpModes[juce::jlimit(0,3,(int)dsp.getValue(serenity::oscAWarpMode+selectedOsc))]);
+ select(1233,222,242,"SHAPE MODE",
+        shapeModes[juce::jlimit(0,3,(int)dsp.getValue(serenity::oscAShapeMode+selectedOsc))]);
  knob(1043,317,28,"POSITION",serenity::position,CYAN);
- knob(1168,317,28,"WARP",-1,CYAN,.50f);
- knob(1288,317,28,"SHAPE",-1,CYAN,.50f);
+ knob(1168,317,28,"WARP",serenity::oscAWarp+selectedOsc,CYAN);
+ knob(1288,317,28,"SHAPE",serenity::oscAShape+selectedOsc,CYAN);
  knob(1416,317,28,"LEVEL",levels[selectedOsc],CYAN);
  tx("ONE CYCLE  —  TABLE  —  AFTER WARP + SHAPE",990,388,465,21,11,MUTE,true);
  wavetableWave(982,417,490,184,selectedOsc,
           juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),position,CYAN,.95f);
  panel(11,638,365,155,"PITCH · PAN");
- miniKnob(65,708,"OCTAVE",-1,.5f);
- miniKnob(150,708,"SEMI",-1,.5f);
- miniKnob(235,708,"FINE",-1,.5f);
- miniKnob(321,708,"PAN",-1,.5f);
+ miniKnob(65,708,"OCTAVE",serenity::oscAOctave+selectedOsc);
+ miniKnob(150,708,"SEMI",serenity::oscASemi+selectedOsc);
+ miniKnob(235,708,"FINE",serenity::oscAFine+selectedOsc);
+ miniKnob(321,708,"PAN",serenity::oscAPan+selectedOsc);
  panel(386,638,546,155,"UNISON · PHASE");
  miniKnob(442,708,"UNISON",unisons[selectedOsc],.5f,CYAN);
  miniKnob(527,708,"DETUNE",serenity::detune,.25f,CYAN);
@@ -486,14 +492,18 @@ void Painter::editor(){
  button(321,604,103,28,"OSC A",true,CYAN);
  tx("8 FRAMES · 512 SAMPLES PER FRAME",23,727,388,22,11,MUTE,true);
  tx("BAND-LIMITED IN 9 SPECTRAL LEVELS",23,748,390,22,11,MUTE);
- panel(446,118,701,723,"3D WAVETABLE · OSC A · ANALOG SAW");
+ panel(446,118,701,723,
+       ("3D WAVETABLE · OSC "+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8());
  button(946,122,194,23,"WARP + SHAPE PREVIEW",true,GOLD);
  waves3d(459,156,675,416,selectedOsc,selectedWave,val(serenity::position));
  tx("POSITION",473,166,140,22,11,MUTE,true);
  tx(juce::String(val(serenity::position),2),474,187,125,41,28,TYPE,true);
  tx("FRAME "+juce::String(1.f+val(serenity::position)*7.f,1)+" / 8",
     474,225,145,18,11,MUTE);
- tx("ANALOG SAW",989,170,135,24,14,CYAN,true);
+ const char* waveNames[]={"Classic","Analog Saw","Pulse Sweep","Hollow Square",
+  "Reso Saw","Vowel Choir","Spectral Peak","FM Bell","FM E-Piano","Metal",
+  "Organ","Reed","Phase Choir","Sync Sweep","Chaos FM","Crystal","Custom"};
+ tx(waveNames[selectedWave],989,170,135,24,14,CYAN,true);
  tx("DRAG UP / DOWN TO MORPH · FRAME 1 IN FRONT, FRAME 8 AT THE BACK",
      526,535,570,23,11,MUTE,true);
  tx("FRAMES OF THE TABLE · CLICK TO JUMP TO A FRAME",457,576,572,20,11,MUTE,true);
@@ -504,13 +514,16 @@ void Painter::editor(){
   tx(juce::String(frame+1),x+20,663,36,17,10,active?GOLD:MUTE,true,1);
  }
  knob(498,714,26,"POSITION",serenity::position,CYAN);
- select(569,696,157,"WARP MODE","Off");
- knob(796,714,27,"WARP",-1,CYAN);
- select(862,696,157,"SHAPE MODE","Off");
- knob(1092,714,27,"SHAPE",-1,CYAN);
+ const char* wm[]={"Off","Bend","PWM","Sync"};
+ select(569,696,157,"WARP MODE",wm[juce::jlimit(0,3,(int)dsp.getValue(serenity::oscAWarpMode+selectedOsc))]);
+ knob(796,714,27,"WARP",serenity::oscAWarp+selectedOsc,CYAN);
+ const char* sh[]={"Off","Saturate","Wavefold","Quantize"};
+ select(862,696,157,"SHAPE MODE",sh[juce::jlimit(0,3,(int)dsp.getValue(serenity::oscAShapeMode+selectedOsc))]);
+ knob(1092,714,27,"SHAPE",serenity::oscAShape+selectedOsc,CYAN);
  panel(1157,118,330,295,"HARMONICS");
  grid(1169,157,307,221,8,5);
- const auto harmonic=dsp.getCustomHarmonics(selectedOsc,4);
+ const auto harmonic=dsp.getCustomHarmonics(selectedOsc,juce::jlimit(0,7,
+                                      (int)std::round(val(serenity::position)*7.f)));
  const float hbase=366.f;
  float peak=.001f;for(auto v:harmonic)peak=std::max(peak,v);
  for(int i=0;i<32;i++){
@@ -951,7 +964,7 @@ void Painter::settings(){
 void SerenityEditor::paintNativePage(juce::Graphics& g){
  juce::Graphics::ScopedSaveState saved(g);
  g.addTransform(juce::AffineTransform::scale((float)getWidth()/1492.f,(float)getHeight()/991.f));
- Painter p(g,synth,selectedOsc,tab);
+ Painter p(g,synth,selectedOsc,tab,activeAB);
  g.fillAll(juce::Colour(BG));
  p.header();
  switch(tab){
