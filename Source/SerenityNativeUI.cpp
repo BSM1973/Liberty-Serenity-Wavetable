@@ -323,6 +323,75 @@ void Painter::footer() {
  g.strokePath(scope,juce::PathStrokeType(1.5f));
 }
 
+
+void Painter::oscillators(){
+ const int levels[]={serenity::oscALevel,serenity::oscBLevel,serenity::oscCLevel,serenity::oscDLevel};
+ const int waves[]={serenity::oscAWave,serenity::oscBWave,serenity::oscCWave,serenity::oscDWave};
+ const int unisons[]={serenity::oscAUnison,serenity::oscBUnison,serenity::oscCUnison,serenity::oscDUnison};
+ const char* waveNames[]={"Classic","Analog Saw","Pulse Sweep","Hollow Square","Reso Saw",
+  "Vowel Choir","Spectral Peak","FM Bell","FM E-Piano","Metal","Organ","Reed",
+  "Phase Choir","Sync Sweep","Chaos FM","Crystal","Custom"};
+ for(int i=0;i<4;i++){
+  const float y=118.f+i*129.f;
+  rr(11,y,245,120,9,PANEL);outline(11,y,245,120,9,i==0?GOLD:STROKE,i==0?2.f:1.f);
+  rr(19,y+7,24,24,12,i==0?CYAN:0xff78869bu);
+  tx(juce::String::charToString((juce_wchar)('A'+i)),19,y+6,24,24,12,DARK,true,1);
+  const int wave=juce::jlimit(0,16,(int)std::lround(dsp.getValue(waves[i])));
+  tx(waveNames[wave],50,y+7,128,23,13,i==0?GOLD:TYPE,true);
+  const bool active=dsp.getValue(levels[i])>.001f;
+  button(191,y+6,56,28,active?"ON":"OFF",active,CYAN);
+  waveform(21,y+42,222,49,wave,i*.03f,i==0?CYAN:PURPLE,active?.84f:.4f);
+  tx("LEVEL",22,y+99,45,17,11,MUTE,true);
+  tx(juce::String((int)std::round(100.f*val(levels[i])))+"%",66,y+99,66,17,11,MUTE);
+  tx("F1",226,y+99,25,16,10,MUTE);
+ }
+ panel(267,118,691,511,"WAVETABLE · OSC A");
+ for(int i=0;i<4;i++){
+  const float x=801+i*35.f;
+  tab(x,121,30,24,juce::String::charToString((juce_wchar)('A'+i)).toRawUTF8(),
+      i==selectedOsc,GOLD);
+ }
+ const float position=val(serenity::position);
+ waves3d(279,156,667,457,juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),position);
+ tx("POSITION",293,169,135,20,11,MUTE,true);
+ tx(juce::String(position,2),293,191,123,45,28,TYPE,true);
+ tx("FRAME "+juce::String(1.f+7.f*position,1)+" / 8",293,233,150,22,11,MUTE);
+ tx("ANALOG SAW",775,174,154,25,13,CYAN,true,2);
+ tx("DRAG UP / DOWN TO MORPH THROUGH THE 8 FRAMES",409,580,472,23,12,MUTE,true);
+ panel(969,118,518,510,"TABLE · WARP · SHAPE");
+ select(981,158,241,"TABLE",u(waveNames[juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc]))]));
+ select(1233,158,242,"ROUTE","Filter 1");
+ select(981,222,241,"WARP MODE","Off");
+ select(1233,222,242,"SHAPE MODE","Off");
+ knob(1043,317,28,"POSITION",serenity::position,CYAN);
+ knob(1168,317,28,"WARP",-1,CYAN,.50f);
+ knob(1288,317,28,"SHAPE",-1,CYAN,.50f);
+ knob(1416,317,28,"LEVEL",levels[selectedOsc],CYAN);
+ tx("ONE CYCLE  —  TABLE  —  AFTER WARP + SHAPE",990,388,465,21,11,MUTE,true);
+ waveform(982,417,490,184,juce::jlimit(0,16,(int)dsp.getValue(waves[selectedOsc])),
+          position*.03f,CYAN,.9f,2.f);
+ panel(11,638,365,155,"PITCH · PAN");
+ miniKnob(65,708,"OCTAVE",-1,.5f);
+ miniKnob(150,708,"SEMI",-1,.5f);
+ miniKnob(235,708,"FINE",-1,.5f);
+ miniKnob(321,708,"PAN",-1,.5f);
+ panel(386,638,546,155,"UNISON · PHASE");
+ miniKnob(442,708,"UNISON",unisons[selectedOsc],CYAN);
+ miniKnob(527,708,"DETUNE",serenity::detune,CYAN);
+ miniKnob(614,708,"SPREAD",serenity::spread,CYAN);
+ miniKnob(704,708,"BLEND",-1,.70f);
+ miniKnob(790,708,"PHASE",-1,.00f);
+ miniKnob(877,708,"RAND PH",-1,.50f);
+ panel(941,638,546,155,"CROSS MODULATION",PURPLE);
+ select(960,674,144,"FM TYPE","Phase Mod",PURPLE);
+ select(960,737,144,"RING TYPE","Ring",PURPLE);
+ miniKnob(1158,709,"B → A",-1,0.f,PURPLE);
+ miniKnob(1251,709,"C → A",-1,0.f,PURPLE);
+ miniKnob(1340,709,"C → B",-1,0.f,PURPLE);
+ miniKnob(1431,709,"RING",-1,0.f,PURPLE);
+ sources();
+}
+
 } // namespace
 
 void SerenityEditor::paintNativePage(juce::Graphics& g){
