@@ -14,6 +14,7 @@ constexpr auto BG=0xff080d16u, PANEL=0xff1e293bu, PANE2=0xff263246u,
  GOLD=0xffd8b667u, SOFT=0xff162132u;
 constexpr float pi=3.14159265358979323846f;
 juce::String u(const char* s){return juce::String::fromUTF8(s);}
+juce::String u(const juce::String& s){return s;}
 float clamp(float x,float a=0.f,float b=1.f){return juce::jlimit(a,b,x);}
 struct Painter {
  juce::Graphics& g;
