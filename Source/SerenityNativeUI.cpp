@@ -346,7 +346,7 @@ void Painter::oscillators(){
   tx(juce::String((int)std::round(100.f*val(levels[i])))+"%",66,y+99,66,17,11,MUTE);
   tx("F1",226,y+99,25,16,10,MUTE);
  }
- panel(267,118,691,511,"WAVETABLE · OSC A");
+ panel(267,118,691,511,("WAVETABLE · OSC "+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8());
  for(int i=0;i<4;i++){
   const float x=801+i*35.f;
   tab(x,121,30,24,juce::String::charToString((juce_wchar)('A'+i)).toRawUTF8(),
@@ -377,9 +377,9 @@ void Painter::oscillators(){
  miniKnob(235,708,"FINE",-1,.5f);
  miniKnob(321,708,"PAN",-1,.5f);
  panel(386,638,546,155,"UNISON · PHASE");
- miniKnob(442,708,"UNISON",unisons[selectedOsc],CYAN);
- miniKnob(527,708,"DETUNE",serenity::detune,CYAN);
- miniKnob(614,708,"SPREAD",serenity::spread,CYAN);
+ miniKnob(442,708,"UNISON",unisons[selectedOsc],.5f,CYAN);
+ miniKnob(527,708,"DETUNE",serenity::detune,.25f,CYAN);
+ miniKnob(614,708,"SPREAD",serenity::spread,.70f,CYAN);
  miniKnob(704,708,"BLEND",-1,.70f);
  miniKnob(790,708,"PHASE",-1,.00f);
  miniKnob(877,708,"RAND PH",-1,.50f);
@@ -414,7 +414,7 @@ void Painter::editor(){
  }
  line(23,592,425,592,STROKE);
  tx(juce::String(selectedWave+1).paddedLeft('0',2),22,601,43,29,17,CYAN,true);
- tx(waves[juce::jlimit(0,15,selectedWave)],56,601,254,29,17,TYPE,true);
+ tx(selectedWave==16?"Custom":waves[selectedWave],56,601,254,29,17,TYPE,true);
  button(321,604,103,28,"OSC A",true,CYAN);
  tx("8 FRAMES · 512 SAMPLES PER FRAME",23,727,388,22,11,MUTE,true);
  tx("BAND-LIMITED IN 9 SPECTRAL LEVELS",23,748,390,22,11,MUTE);
@@ -605,7 +605,7 @@ void Painter::effects(){
  miniKnob(1021,546,"FEEDBACK",-1,.5f);
  miniKnob(1086,546,"TONE",-1,.7f);
  miniKnob(1153,546,"MIX",serenity::delayMix);
- miniKnob(1315,547,"VOLUME",serenity::master,PURPLE);
+ miniKnob(1315,547,"VOLUME",serenity::master,.8f,PURPLE);
  miniKnob(1398,547,"WIDTH",-1,1.f,PURPLE);
  panel(11,620,457,221,"REVERB");
  panel(478,620,239,221,"FX LFOS",PURPLE);
