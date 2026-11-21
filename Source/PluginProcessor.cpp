@@ -163,7 +163,39 @@ const std::array<ParamSpec,parameterCount> specs={{
  {"compAttack",.001f,.2f,.015f},
  {"compRelease",.02f,1,.15f},
  {"compMakeup",0,24,0},
- {"compMix",0,1,0}
+ {"compMix",0,1,0},
+ {"filter1Type",0,14,0},
+ {"filter2Type",0,14,1},
+ {"filter1Enabled",0,1,1},
+ {"filter1Drive",0,1,0},
+ {"filter2Drive",0,1,0},
+ {"filter1Env",-1,1,0},
+ {"filter2Env",-1,1,0},
+ {"filter1Key",0,1,0},
+ {"filter2Key",0,1,0},
+ {"filter1Vel",-1,1,0},
+ {"filter2Vel",-1,1,0},
+ {"filter1Mix",0,1,1},
+ {"reverbType",0,3,1},
+ {"reverbDamping",0,1,.5f},
+ {"reverbSize",.5f,1.5f,1},
+ {"reverbPreDelay",0,.2f,.015f},
+ {"reverbLowCut",20,1000,100},
+ {"reverbWidth",0,1.5f,1},
+ {"env1Loop",0,1,0},
+ {"env2Loop",0,1,0},
+ {"env3Loop",0,1,0},
+ {"env4Loop",0,1,0},
+ {"env5Loop",0,1,0},
+ {"env6Loop",0,1,0},
+ {"lfo1Fade",0,8,0},
+ {"lfo2Fade",0,8,0},
+ {"lfo3Fade",0,8,0},
+ {"lfo4Fade",0,8,0},
+ {"lfo5Fade",0,8,0},
+ {"lfo6Fade",0,8,0},
+ {"lfo7Fade",0,8,0},
+ {"lfo8Fade",0,8,0}
 }};
 }
 
@@ -185,7 +217,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SerenityAudioProcessor::crea
     ||i==serenity::lfo6Shape||i==serenity::lfo6Unipolar
     ||i==serenity::lfo7Shape||i==serenity::lfo7Unipolar
     ||i==serenity::lfo8Shape||i==serenity::lfo8Unipolar
-    ||i==serenity::modFxType||(i>=serenity::lfo1Sync&&i<=serenity::lfo8Smooth&&(i-serenity::lfo1Sync)%3!=2);
+    ||i==serenity::modFxType||(i>=serenity::lfo1Sync&&i<=serenity::lfo8Smooth&&(i-serenity::lfo1Sync)%3!=2)
+    ||(i>=serenity::filter1Type&&i<=serenity::filter1Enabled)||i==serenity::reverbType||(i>=serenity::env1Loop&&i<=serenity::env6Loop);
   juce::NormalisableRange<float> r(s.lo,s.hi,discrete?1.0f:0.0001f);
   p.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{s.id,1},juce::String(s.id),r,s.initial));
  }
@@ -295,6 +328,25 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
  p.tremDepth=getValue(serenity::tremDepth);
  p.fxRingFreq=getValue(serenity::fxRingFreq);
  p.fxRingMix=getValue(serenity::fxRingMix);
+ p.filter1Type=(int)getValue(serenity::filter1Type);
+ p.filter2Type=(int)getValue(serenity::filter2Type);
+ p.filter1Enabled=getValue(serenity::filter1Enabled)>.5f;
+ p.filter1Drive=getValue(serenity::filter1Drive);
+ p.filter2Drive=getValue(serenity::filter2Drive);
+ p.filter1Env=getValue(serenity::filter1Env);
+ p.filter2Env=getValue(serenity::filter2Env);
+ p.filter1Key=getValue(serenity::filter1Key);
+ p.filter2Key=getValue(serenity::filter2Key);
+ p.filter1Vel=getValue(serenity::filter1Vel);
+ p.filter2Vel=getValue(serenity::filter2Vel);
+ p.filter1Mix=getValue(serenity::filter1Mix);
+ p.reverbType=(int)getValue(serenity::reverbType);
+ p.reverbDamping=getValue(serenity::reverbDamping);
+ p.reverbSize=getValue(serenity::reverbSize);
+ p.reverbPreDelay=getValue(serenity::reverbPreDelay);
+ p.reverbLowCut=getValue(serenity::reverbLowCut);
+ p.reverbWidth=getValue(serenity::reverbWidth);
+ p.envLoop=getValue(serenity::env1Loop)>.5f;
  p.envCurve=getValue(serenity::env1Curve);p.envVelocity=getValue(serenity::env1Velocity);
  p.modFxType=(int)getValue(serenity::modFxType);
  p.modFxRate=getValue(serenity::modFxRate);
@@ -320,6 +372,7 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
  p.envDelay=getValue(serenity::env1Delay);p.envHold=getValue(serenity::env1Hold);
  for(int k=1;k<6;k++){
   auto& e=p.modEnv[(size_t)k-1];
+  e.loop=getValue(serenity::env1Loop+k)>.5f;
   e.curve=getValue(serenity::env1Curve+2*k);e.velocity=getValue(serenity::env1Velocity+2*k);
   e.delay=getValue(serenity::envParameter(k,0));
   e.attack=getValue(serenity::envParameter(k,1));
@@ -331,7 +384,7 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
  for(int k=0;k<8;k++){
   auto& f=p.lfos[(size_t)k];f.rate=getValue(serenity::lfoParameter(k,0));
   f.shape=(int)getValue(serenity::lfoParameter(k,1));f.phase=getValue(serenity::lfoParameter(k,2));f.unipolar=getValue(serenity::lfoParameter(k,3))>.5f;
-  f.sync=getValue(serenity::lfo1Sync+3*k)>.5f;f.division=(int)getValue(serenity::lfo1Division+3*k);f.smooth=getValue(serenity::lfo1Smooth+3*k);
+  f.sync=getValue(serenity::lfo1Sync+3*k)>.5f;f.division=(int)getValue(serenity::lfo1Division+3*k);f.smooth=getValue(serenity::lfo1Smooth+3*k);f.fade=getValue(serenity::lfo1Fade+k);
  }
  // 8 macro parameters are host-automatable; map 4 useful defaults into DSP.
  p.cutoff=serenity::clamp(p.cutoff+(getValue(serenity::macroBrightness)-.5f)*.2f,0,1);
@@ -651,8 +704,67 @@ void SerenityAudioProcessor::applyPreset(int index){
   setValue(serenity::oscAPhase+osc,p.oscPhase[osc]);
   setValue(serenity::oscARandPhase+osc,p.oscRandPhase[osc]);
  }
- // Factory definitions predating v0.10 reset added modules to their neutral defaults.
+ // Reset any unused advanced parameters, then load every new sound-design value.
  for(int i=serenity::fmBA;i<serenity::parameterCount;i++)setValue(i,serenity::specs[(size_t)i].initial);
+ setValue(serenity::filter1Type,(float)p.filter1Type);
+ setValue(serenity::filter2Type,(float)p.filter2Type);
+ setValue(serenity::filter1Enabled,(float)p.filter1Enabled);
+ setValue(serenity::filter1Drive,(float)p.filter1Drive);
+ setValue(serenity::filter2Drive,(float)p.filter2Drive);
+ setValue(serenity::filter1Env,(float)p.filter1Env);
+ setValue(serenity::filter2Env,(float)p.filter2Env);
+ setValue(serenity::filter1Key,(float)p.filter1Key);
+ setValue(serenity::filter2Key,(float)p.filter2Key);
+ setValue(serenity::filter1Vel,(float)p.filter1Vel);
+ setValue(serenity::filter2Vel,(float)p.filter2Vel);
+ setValue(serenity::filter1Mix,(float)p.filter1Mix);
+ setValue(serenity::reverbType,(float)p.reverbType);
+ setValue(serenity::reverbDamping,(float)p.reverbDamping);
+ setValue(serenity::reverbSize,(float)p.reverbSize);
+ setValue(serenity::reverbPreDelay,(float)p.reverbPreDelay);
+ setValue(serenity::reverbLowCut,(float)p.reverbLowCut);
+ setValue(serenity::reverbWidth,(float)p.reverbWidth);
+ setValue(serenity::fmBA,(float)p.fmBA);
+ setValue(serenity::fmCA,(float)p.fmCA);
+ setValue(serenity::fmCB,(float)p.fmCB);
+ setValue(serenity::ringAmount,(float)p.ringAmount);
+ setValue(serenity::fmMode,(float)p.fmMode);
+ setValue(serenity::ringMode,(float)p.ringMode);
+ setValue(serenity::delayTime,(float)p.delayTime);
+ setValue(serenity::delayFeedback,(float)p.delayFeedback);
+ setValue(serenity::delayTone,(float)p.delayTone);
+ setValue(serenity::reverbFeedback,(float)p.reverbFeedback);
+ setValue(serenity::masterWidth,(float)p.masterWidth);
+ setValue(serenity::tremRate,(float)p.tremRate);
+ setValue(serenity::tremDepth,(float)p.tremDepth);
+ setValue(serenity::tremMode,(float)p.tremMode);
+ setValue(serenity::fxRingFreq,(float)p.fxRingFreq);
+ setValue(serenity::fxRingMix,(float)p.fxRingMix);
+ setValue(serenity::modFxType,(float)p.modFxType);
+ setValue(serenity::modFxRate,(float)p.modFxRate);
+ setValue(serenity::modFxDepth,(float)p.modFxDepth);
+ setValue(serenity::modFxFeedback,(float)p.modFxFeedback);
+ setValue(serenity::modFxMix,(float)p.modFxMix);
+ setValue(serenity::eqLowGain,(float)p.eqLowGain);
+ setValue(serenity::eqLowFreq,(float)p.eqLowFreq);
+ setValue(serenity::eqMidGain,(float)p.eqMidGain);
+ setValue(serenity::eqMidFreq,(float)p.eqMidFreq);
+ setValue(serenity::eqMidQ,(float)p.eqMidQ);
+ setValue(serenity::eqHighGain,(float)p.eqHighGain);
+ setValue(serenity::eqHighFreq,(float)p.eqHighFreq);
+ setValue(serenity::compThreshold,(float)p.compThreshold);
+ setValue(serenity::compRatio,(float)p.compRatio);
+ setValue(serenity::compAttack,(float)p.compAttack);
+ setValue(serenity::compRelease,(float)p.compRelease);
+ setValue(serenity::compMakeup,(float)p.compMakeup);
+ setValue(serenity::compMix,(float)p.compMix);
+ setValue(serenity::env1Curve,p.envCurve);setValue(serenity::env1Velocity,p.envVelocity);setValue(serenity::env1Delay,p.envDelay);setValue(serenity::env1Hold,p.envHold);setValue(serenity::env1Loop,p.envLoop?1.f:0.f);
+ for(int k=1;k<6;k++){const auto& cfg=p.modEnv[(size_t)k-1];const float vals[]={cfg.delay,cfg.attack,cfg.hold,cfg.decay,cfg.sustain,cfg.release};
+  for(int j=0;j<6;j++)setValue(serenity::envParameter(k,j),vals[j]);setValue(serenity::env1Curve+2*k,cfg.curve);setValue(serenity::env1Velocity+2*k,cfg.velocity);setValue(serenity::env1Loop+k,cfg.loop?1.f:0.f);}
+ for(int k=0;k<8;k++){const auto& f=p.lfos[(size_t)k];if(k>0)setValue(serenity::lfoParameter(k,0),f.rate);
+  setValue(serenity::lfoParameter(k,1),(float)f.shape);setValue(serenity::lfoParameter(k,2),f.phase);setValue(serenity::lfoParameter(k,3),f.unipolar?1.f:0.f);
+  setValue(serenity::lfo1Sync+3*k,f.sync?1.f:0.f);setValue(serenity::lfo1Division+3*k,(float)f.division);setValue(serenity::lfo1Smooth+3*k,f.smooth);setValue(serenity::lfo1Fade+k,f.fade);}
+ for(int k=0;k<8;k++)setValue(serenity::macroBrightness+k,.5f);
  selectedPreset.store(index);
 }
 const juce::String SerenityAudioProcessor::getProgramName(int index){

@@ -79,6 +79,16 @@ int main() {
  p.compMix=1;p.compThreshold=-48;assert(difference(dry,render(p))>.01);p.compMix=0;
  for(int type=0;type<3;type++){p.modFxType=type;p.modFxMix=1;assert(difference(dry,render(p))>.01);}
  p.modFxMix=0;
- std::cout<<"PASS: curved envelopes, tempo divisions, EQ, compressor and stereo modulation FX\n";
+ p.modFxMix=0;p.cutoff=.48f;p.resonance=.4f;
+ const auto lp=render(p);
+ for(int type=0;type<15;type++){p.filter1Type=type;auto pcm=render(p);if(type!=0)assert(difference(lp,pcm)>.001);
+  assert(std::isfinite(filterMag(type,1000,1000,.7f,48000.f)));}
+ p.filter1Type=0;p.resonance=.9f;assert(difference(lp,render(p))>.001);
+ Envelope looping;EnvelopeSettings lc;lc.attack=.001f;lc.decay=.002f;lc.sustain=.2f;lc.loop=true;looping.on();
+ float lo=1,hi=0;for(int i=0;i<2000;i++){float v=looping.next(lc,48000.f);lo=std::min(lo,v);hi=std::max(hi,v);}assert(hi>.98f&&lo<.3f);
+ looping.off(.01f,48000.f);for(int i=0;i<600;i++)looping.next(lc,48000.f);assert(looping.stage==Envelope::idle);
+ assert(factoryPresets().size()==100);
+ for(const auto& patch:factoryPresets()){const auto pcm=render(patch.p);float peak=0;for(float v:pcm)peak=std::max(peak,std::abs(v));assert(peak>1.e-7f);}
+ std::cout<<"PASS: 15 filter modes, resonant response, envelope loop and 100 factory patches\n";
  return 0;
 }

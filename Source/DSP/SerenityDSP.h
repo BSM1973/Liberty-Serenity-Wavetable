@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -20,8 +21,8 @@ constexpr int frames=8, tableSize=512, mipCount=8;
 inline float clamp(float x,float a,float b) noexcept { return std::max(a,std::min(x,b)); }
 inline float mix(float a,float b,float t) noexcept {return a+(b-a)*t;}
 
-struct EnvelopeSettings { float delay=0,attack=.004f,hold=0,decay=.45f,sustain=.7f,release=.35f,curve=0,velocity=0; };
-struct LfoSettings { float rate=5,phase=0; int shape=0; bool unipolar=false; bool sync=false;int division=5;float smooth=0; };
+struct EnvelopeSettings { float delay=0,attack=.004f,hold=0,decay=.45f,sustain=.7f,release=.35f,curve=0,velocity=0; bool loop=false; };
+struct LfoSettings { float rate=5,phase=0; int shape=0; bool unipolar=false; bool sync=false;int division=5;float smooth=0,fade=0; };
 inline float envelopeCurve(float x,float curve) noexcept {x=clamp(x,0.f,1.f);return curve>=0.f?mix(x,x*x,curve):mix(x,1.f-(1.f-x)*(1.f-x),-curve);}
 inline constexpr std::array<float,12> lfoBeats{{4.f,2.f,1.5f,1.f,2.f/3.f,.5f,.375f,1.f/3.f,.25f,1.f/6.f,.125f,.0625f}};
 inline float lfoFrequency(const LfoSettings& f,float rate,float bpm) noexcept {return f.sync?clamp(bpm,20.f,400.f)/(60.f*lfoBeats[(size_t)std::max(0,std::min(11,f.division))]):rate;}
@@ -32,7 +33,11 @@ inline float lfoWave(float phase,int shape) noexcept {
 struct Params {
  float master=0.65f, cutoff=0.85f, resonance=0.14f, position=0.50f;
  float cutoff2=0.55f,resonance2=.2f,filter2Mix=1.f;
- bool filter2On=false, parallelFilters=false;
+ bool filter2On=false, parallelFilters=false,filter1Enabled=true;
+ int filter1Type=0,filter2Type=1;
+ float filter1Drive=0,filter2Drive=0,filter1Env=0,filter2Env=0,filter1Key=0,filter2Key=0,filter1Vel=0,filter2Vel=0,filter1Mix=1;
+ int reverbType=1;float reverbDamping=.5f,reverbSize=1,reverbPreDelay=.015f,reverbLowCut=100,reverbWidth=1;
+ bool envLoop=false;
  float attack=0.004f, decay=0.45f, sustain=0.70f, release=0.35f;
  float detune=0.20f, spread=0.70f, delay=0.10f, reverb=0.15f, drive=0.0f;
  float lfoRate=5.0f, lfoDepth=0.0f, wavemorph=0.0f;
@@ -53,7 +58,7 @@ struct Params {
  int modFxType=0;float modFxRate=.6f,modFxDepth=.5f,modFxFeedback=0,modFxMix=0;
  float eqLowGain=0,eqLowFreq=120,eqMidGain=0,eqMidFreq=1000,eqMidQ=1,eqHighGain=0,eqHighFreq=6000;
  float compThreshold=-18,compRatio=4,compAttack=.015f,compRelease=.15f,compMakeup=0,compMix=0;
- EnvelopeSettings amplitude() const noexcept {return {envDelay,attack,envHold,decay,sustain,release,envCurve,envVelocity};}
+ EnvelopeSettings amplitude() const noexcept {return {envDelay,attack,envHold,decay,sustain,release,envCurve,envVelocity,envLoop};}
  int oscWarpMode[4]{},oscShapeMode[4]{};
  int wave[4]={1,0,3,0};
  int unison[4]={1,1,1,1};
@@ -145,7 +150,7 @@ struct Envelope {
    case idle:return 0;
    case delay:case hold:break;
    case attack:{elapsed+=dt;float q=clamp(elapsed/std::max(.001f,p.attack),0.f,1.f);value=mix(origin,1.f,envelopeCurve(q,p.curve));if(q>=1.f){value=1;stage=hold;elapsed=0;}break;}
-   case decay:{elapsed+=dt;float q=clamp(elapsed/std::max(.001f,p.decay),0.f,1.f);value=mix(1.f,p.sustain,envelopeCurve(q,p.curve));if(q>=1.f){value=p.sustain;stage=sustain;}break;}
+   case decay:{elapsed+=dt;float q=clamp(elapsed/std::max(.001f,p.decay),0.f,1.f);value=mix(1.f,p.sustain,envelopeCurve(q,p.curve));if(q>=1.f){value=p.sustain;if(p.loop){origin=value;stage=attack;elapsed=0;}else stage=sustain;}break;}
    case sustain:value=p.sustain;break;
    case release:{elapsed+=dt;float q=clamp(elapsed/releaseSeconds,0.f,1.f);value=origin*(1.f-envelopeCurve(q,p.curve));if(q>=1.f){value=0;stage=idle;}break;}
   }
@@ -173,10 +178,67 @@ inline float eqMagnitude(const EqCoefficients& k,float freq,float sr) noexcept {
 }
 struct EqState {float z1=0,z2=0;float tick(float x,const EqCoefficients& c) noexcept {float y=c.b0*x+z1;z1=c.b1*x-c.a1*y+z2;z2=c.b2*x-c.a2*y;return y;}};
 inline float compressorGainDb(float level,float threshold,float ratio) noexcept {return -std::max(0.f,level-threshold)*(1.f-1.f/std::max(1.f,ratio));}
+// Topology-preserving state variable filters; each mode uses the same resonant core.
+inline constexpr const char* filterNames[]={"LP 24","LP 12","HP 12","HP 24","BP 12","BP 24","Notch 12","Notch 24","All Pass","Peak","Low Shelf","High Shelf","Band Shelf","LP + BP","HP + BP"};
+template<class T> inline T filterOutput(int mode,T x,T lo,T bp,T hi,float k) noexcept {
+ switch(mode){case 2:case 3:return hi;case 4:case 5:return bp*k;
+ case 6:case 7:return lo+hi;case 8:return lo+hi-bp*k;case 9:return lo-hi;
+ case 10:return x+lo*.75f;case 11:return x+hi*.75f;case 12:return x+bp*k*.75f;
+ case 13:return lo+bp*k*.5f;case 14:return hi+bp*k*.5f;default:return lo;}
+}
+inline bool doubleFilter(int mode) noexcept{return mode==0||mode==3||mode==5||mode==7;}
+struct Svf {float ic1=0,ic2=0;
+ float tick(float x,float g,float k,int mode) noexcept {
+  float a=1.f/(1.f+g*(g+k)),v1=a*(ic1+g*(x-ic2)),v2=ic2+g*v1;
+  ic1=2.f*v1-ic1;ic2=2.f*v2-ic2;
+  return filterOutput(mode,x,v2,v1,x-k*v1-v2,k);
+ }
+};
+inline float filterMag(int mode,float frequency,float cutoff,float resonance,float sr) noexcept{
+ using Z=std::complex<float>;
+ float r=std::tan(pi*clamp(frequency,10.f,sr*.45f)/sr)/std::tan(pi*clamp(cutoff,10.f,sr*.45f)/sr);
+ float k=2.f-1.85f*clamp(resonance,0.f,1.f);
+ Z z(0,r),den=1.f+k*z+z*z;
+ Z h=filterOutput(mode,Z(1,0),Z(1,0)/den,z/den,z*z/den,k);
+ float m=std::abs(h);return doubleFilter(mode)?m*m:m;
+}
+struct FilterChannel {Svf a,b;float run(float x,float cutoff,float resonance,float drive,int mode,float sr) noexcept{
+ if(drive>0){float g=1.f+drive*5.f;x=std::tanh(x*g)/g;}
+ float g=std::tan(pi*clamp(cutoff,10.f,sr*.45f)/sr),k=2.f-1.85f*clamp(resonance,0.f,1.f);
+ float y=a.tick(x,g,k,mode);return doubleFilter(mode)?b.tick(y,g,k,mode):y;
+}};
+// Eight-line orthogonal feedback delay network, stereo decorrelated taps.
+struct StereoReverb {
+ std::array<std::vector<float>,8> lines;std::array<float,8> damp{};
+ std::array<std::vector<float>,2> pre;std::array<float,2> low{};
+ size_t pos=0;float sr=48000;
+ void prepare(float rate){sr=rate;for(auto& v:lines)v.assign((size_t)(sr*.19f)+8,0);for(auto& v:pre)v.assign((size_t)(sr*.21f)+8,0);reset();}
+ void reset() noexcept{pos=0;damp={};low={};for(auto& v:lines)std::fill(v.begin(),v.end(),0.f);for(auto& v:pre)std::fill(v.begin(),v.end(),0.f);}
+ void tick(float& l,float& r,const Params& p) noexcept{
+  if(lines[0].empty())return;
+  const float x[]={l,r};float in[2]{};
+  float hp=1.f-std::exp(-2*pi*clamp(p.reverbLowCut,20.f,1000.f)/sr);
+  for(size_t j=0;j<2;j++){low[j]+=(x[j]-low[j])*hp;auto& buf=pre[j];size_t n=buf.size(),w=pos%n;
+   buf[w]=x[j]-low[j];size_t d=(size_t)(sr*clamp(p.reverbPreDelay,0.f,.2f));in[j]=buf[(w+n-d%n)%n];}
+  constexpr float times[]={.0297f,.0371f,.0411f,.0437f,.0531f,.0617f,.0719f,.0797f};
+  constexpr float sizes[]={.65f,1.f,1.35f,.8f};
+  const float size=clamp(p.reverbSize,.5f,1.5f)*sizes[std::max(0,std::min(3,p.reverbType))];
+  float sum=0,wetL=0,wetR=0;
+  for(size_t j=0;j<8;j++){auto& buf=lines[j];size_t n=buf.size(),d=(size_t)(sr*times[j]*size);
+   float y=buf[(pos%n+n-d%n)%n];damp[j]+=(y-damp[j])*(1.f-.94f*clamp(p.reverbDamping,0.f,1.f));sum+=damp[j];
+   wetL+=y*((j&1)?-1.f:1.f);wetR+=y*((j&2)?-1.f:1.f);}
+  const float fb=clamp(p.reverbFeedback,0.f,.94f);
+  for(size_t j=0;j<8;j++){auto& buf=lines[j];buf[pos%buf.size()]=.22f*(in[0]*((j&1)?-1.f:1.f)+in[1]*((j&2)?-1.f:1.f))+fb*(damp[j]-.25f*sum);}
+  ++pos;float mid=.5f*(wetL+wetR),side=.5f*(wetL-wetR)*p.reverbWidth;
+  l+=(mid+side)*p.reverb*.28f;r+=(mid-side)*p.reverb*.28f;
+ }
+};
 struct Voice {
  int note=-1;bool active=false;
  float velocity=0,stepGate=0,filterL=0,filterR=0,filter2L=0,filter2R=0;
  float filter3L=0,filter3R=0,filter4L=0,filter4R=0;
+ std::array<std::array<FilterChannel,2>,2> filters{};
+ float lfoAge=0;
  Envelope amp;
  std::array<Envelope,6> envelopes{};
  std::array<std::array<float,maxUnison>,generators> phase{};
@@ -186,6 +248,7 @@ struct Voice {
  void start(int n,float v,uint64_t when) noexcept {
   note=n;velocity=v;active=true;age=when;amp={};amp.on();
   for(auto &env:envelopes){env={};env.on();}
+  filters={};lfoAge=0;
   filterL=filterR=filter2L=filter2R=0;filter3L=filter3R=filter4L=filter4R=0;
   for(auto &array:phase) array.fill(0);
   modSignal.fill(0.f);
@@ -246,7 +309,8 @@ class Engine {
  StepClock sequence;
  int lastSequenceIndex=-1;
  uint64_t noteCounter=0;
- std::vector<float> delayL,delayR,reverbL,reverbR;
+ std::vector<float> delayL,delayR;
+ StereoReverb reverbFx;
  size_t delayIndex=0, reverbIndex=0;
  Params p;
  int activeCount=0;
@@ -276,12 +340,12 @@ public:
   sr=(float)std::max(8000.0,sampleRate);
   sequence.prepare(sampleRate);
   delayL.assign((size_t)(sr*2.0f)+1,0);delayR=delayL;
-  reverbL.assign((size_t)(sr*.173f)+1,0);reverbR.assign((size_t)(sr*.193f)+1,0);
+  reverbFx.prepare(sr);
   delayIndex=reverbIndex=0;
   for(auto& buf:modDelay)buf.assign((size_t)(sr*.04f)+4,0.f);
   reset();setParams(p);
  }
- void reset() noexcept {for(auto &v:voices)v=Voice{};lfoPhases.fill(0.f);lfoSmooth.fill(0.f);modFxPhase=0;modIndex=0;eqState={};phaserState={};phaserFeedback={};compGain=1;for(auto& buf:modDelay)std::fill(buf.begin(),buf.end(),0.f);tremPhase=ringPhase=0;delayToneL=delayToneR=0;delaySmoothed=p.delayTime;activeCount=0;sequence.reset();lastSequenceIndex=-1;}
+ void reset() noexcept {for(auto &v:voices)v=Voice{};reverbFx.reset();std::fill(delayL.begin(),delayL.end(),0.f);std::fill(delayR.begin(),delayR.end(),0.f);delayIndex=0;lfoPhases.fill(0.f);lfoSmooth.fill(0.f);modFxPhase=0;modIndex=0;eqState={};phaserState={};phaserFeedback={};compGain=1;for(auto& buf:modDelay)std::fill(buf.begin(),buf.end(),0.f);tremPhase=ringPhase=0;delayToneL=delayToneR=0;delaySmoothed=p.delayTime;activeCount=0;sequence.reset();lastSequenceIndex=-1;}
  void setParams(const Params &next) noexcept {p=next;p.polyphony=std::max(1,std::min(p.polyphony,maxVoices));
   eqCoeffs={eqCoefficients(0,p.eqLowFreq,p.eqLowGain,1.f,sr),eqCoefficients(1,p.eqMidFreq,p.eqMidGain,p.eqMidQ,sr),eqCoefficients(2,p.eqHighFreq,p.eqHighGain,1.f,sr)};
   compAtk=std::exp(-1.f/(sr*std::max(.001f,p.compAttack)));compRel=std::exp(-1.f/(sr*std::max(.02f,p.compRelease)));compMakeupGain=std::pow(10.f,p.compMakeup/20.f);
@@ -329,6 +393,7 @@ public:
     if(!v.active) continue;
     // Retrigger the envelope on every played step without reallocating voices.
     if(retrigger){v.amp.on();for(auto &envelope:v.envelopes)envelope.on();}
+    v.lfoAge+=1.f/sr;
     const auto ampSettings=p.amplitude();
     float env=v.amp.next(ampSettings,sr)*mix(1.f,v.velocity,ampSettings.velocity);
     // Keep voice allocation intact while steps gate/retrigger the held note.
@@ -344,7 +409,7 @@ public:
      if(route.source<0||route.destination<0||route.amount==0)continue;
      float src=0;
      if(route.source<6)src=envs[(size_t)route.source];
-     else if(route.source<14)src=lfos[(size_t)(route.source-6)];
+     else if(route.source<14){size_t k=(size_t)(route.source-6);src=lfos[k]*(p.lfos[k].fade>0.f?clamp(v.lfoAge/p.lfos[k].fade,0.f,1.f):1.f);}
      else if(route.source==14)src=v.velocity;
      else if(route.source==15)src=(v.note-60)/60.f;
      else if(route.source==16)src=modWheel;
@@ -394,18 +459,17 @@ public:
       vl+=x*(1-pan)*.5f;vr+=x*(1+pan)*.5f;
      }
     }
-    // Two cascaded smoothed filters provide stable low-pass response.
-    float a=lowpass(vl,v.filterL,vCutoff),b=lowpass(vr,v.filterR,vCutoff);
-    a=lowpass(a,v.filter2L,vCutoff);b=lowpass(b,v.filter2R,vCutoff);
-    if(p.filter2On){
-     const float c2=25.f*std::pow(800.f,clamp(p.cutoff2,0.f,1.f));
-     float f2l=lowpass(p.parallelFilters?vl:a,v.filter3L,c2);
-     float f2r=lowpass(p.parallelFilters?vr:b,v.filter3R,c2);
-     f2l=lowpass(f2l,v.filter4L,c2);f2r=lowpass(f2r,v.filter4R,c2);
-     a=mix(a,f2l,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);
-     b=mix(b,f2r,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);
-    }
-    float dry=1.f-p.resonance*.22f;
+    const float key=(v.note-60)/12.f,ev=envs[1];
+    float a=vl,b=vr;
+    const float cutoffA=vCutoff*std::pow(2.f,key*p.filter1Key+5.f*ev*p.filter1Env+2.f*v.velocity*p.filter1Vel);
+    if(p.filter1Enabled){a=mix(vl,v.filters[0][0].run(vl,cutoffA,p.resonance,p.filter1Drive,p.filter1Type,sr),p.filter1Mix);
+     b=mix(vr,v.filters[0][1].run(vr,cutoffA,p.resonance,p.filter1Drive,p.filter1Type,sr),p.filter1Mix);}
+    if(p.filter2On){const float cutoffB=25.f*std::pow(800.f,clamp(p.cutoff2,0.f,1.f))*std::pow(2.f,key*p.filter2Key+5.f*ev*p.filter2Env+2.f*v.velocity*p.filter2Vel);
+     float inL=p.parallelFilters?vl:a,inR=p.parallelFilters?vr:b;
+     float f2l=v.filters[1][0].run(inL,cutoffB,p.resonance2,p.filter2Drive,p.filter2Type,sr);
+     float f2r=v.filters[1][1].run(inR,cutoffB,p.resonance2,p.filter2Drive,p.filter2Type,sr);
+     a=mix(a,f2l,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);b=mix(b,f2r,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);}
+    const float dry=1.f;
     const float seqGain=seq.velocity*v.stepGate;
     l+=a*env*v.velocity*dry*seqGain*clamp(1.f+volumeMod,0,2);
     r+=b*env*v.velocity*dry*seqGain*clamp(1.f+volumeMod,0,2);
@@ -428,14 +492,7 @@ public:
     if(++delayIndex>=len)delayIndex=0;
     l+=dl*p.delay*.5f;r+=dr*p.delay*.5f;
    }
-   if(!reverbL.empty()){
-    float wetL=reverbL[reverbIndex%reverbL.size()];
-    float wetR=reverbR[reverbIndex%reverbR.size()];
-    reverbL[reverbIndex%reverbL.size()]=l+wetL*clamp(p.reverbFeedback,0.f,.94f);
-    reverbR[reverbIndex%reverbR.size()]=r+wetR*clamp(p.reverbFeedback-.01f,0.f,.94f);
-    ++reverbIndex;
-    l+=wetL*p.reverb*.45f;r+=wetR*p.reverb*.45f;
-   }
+   reverbFx.tick(l,r,p);
    const float trem=std::sin(2*pi*tremPhase);tremPhase+=p.tremRate/sr;tremPhase-=std::floor(tremPhase);
    const float depth=clamp(p.tremDepth,0.f,1.f);
    if(p.tremMode==0){const float gain=1.f-depth*.5f*(1.f+trem);l*=gain;r*=gain;}
@@ -484,6 +541,18 @@ inline const std::vector<Preset>& factoryPresets() {
    if(patch.category=="Plucks"||patch.category=="Keys") {p.attack=.003f;p.decay=.24f;p.sustain=.12f;p.release=.31f;}
    if(patch.category=="Leads"||patch.category=="EDM") {p.unison[0]=3;p.detune=.24f;p.attack=.004f;p.sustain=.80f;}
    if(patch.category=="Cinematic"||patch.category=="Experimental") {p.oscLevel[2]=.20f;p.wave[2]=(idx+5)%waveCount;p.reverb=.25f;p.release=.8f;}
+   // Category-specific sound design using the new DSP; preserved names and ordering.
+   p.resonance=.10f+.19f*v;p.filter1Drive=.05f*v;p.envCurve=(v-.5f)*.6f;
+   p.envVelocity=.20f;p.eqLowGain=-2.f+v*4.f;p.eqHighGain=(v-.5f)*4.f;
+   p.modFxRate=.18f+.8f*v;p.modFxDepth=.25f+.45f*v;p.reverbDamping=.4f+.35f*v;
+   p.reverbSize=.75f+.5f*v;p.reverbPreDelay=.008f+.03f*v;p.delayFeedback=.22f+.25f*v;
+   p.compMix=.18f;p.compThreshold=-16.f;p.compRatio=2.5f;
+   if(patch.category=="Bass"){p.oscOctave[1]=-1;p.filter1Type=idx%3==0?1:0;p.filter1Env=.20f+.25f*v;p.modEnv[0].decay=.12f+.25f*v;p.modEnv[0].sustain=0;p.reverb=.04f;p.modFxMix=.02f;}
+   else if(patch.category=="Pads"||patch.category=="Ambient"){p.modFxType=0;p.modFxMix=.24f+.22f*v;p.reverbType=2;p.reverb=.32f+.16f*v;p.oscPan[0]=-.18f;p.oscPan[1]=.18f;p.filter1Type=idx%3==0?13:0;p.lfos[0].fade=.4f;p.lfoDepth=.07f;}
+   else if(patch.category=="Cinematic"||patch.category=="Experimental"){p.filter1Type=idx%15;p.filter2On=true;p.parallelFilters=true;p.filter2Type=6;p.filter2Mix=.30f;p.fmBA=.06f+.22f*v;p.modFxType=idx%3;p.modFxMix=.24f;p.reverbType=2;p.reverb=.36f;p.lfoDepth=.12f;}
+   else if(patch.category=="Leads"||patch.category=="EDM"){p.filter1Type=idx%2;p.filter1Env=.12f;p.drive=.08f+.13f*v;p.modFxMix=.15f;p.compMix=.35f;p.fmBA=.08f*v;p.reverb=.12f;}
+   else if(patch.category=="Plucks"||patch.category=="Keys"){p.filter1Type=1;p.filter1Env=.30f;p.modEnv[0].decay=.08f+.22f*v;p.modEnv[0].sustain=0;p.envCurve=.25f;p.modFxMix=.12f;p.reverb=.20f;}
+   else {p.lfos[0].sync=true;p.lfos[0].division=5+idx%4;p.lfoDepth=.16f;p.filter1Type=4;p.delayTime=.20f;p.delay=.25f;p.modFxMix=.12f;}
    result.push_back(std::move(patch));idx++;
   }
   return result;

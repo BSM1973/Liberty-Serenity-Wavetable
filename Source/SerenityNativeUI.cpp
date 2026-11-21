@@ -557,31 +557,36 @@ void Painter::editor(){
 }
 void Painter::filters(){
  panel(11,118,1476,445,"FILTER RESPONSE");
- tx("Filter 1 · LP24",25,157,156,21,12,CYAN);
- tx("Filter 2 · LP12",186,157,164,21,12,PURPLE);
- tx("Combined · F1 → F2",365,157,219,21,12,TYPE);
+ const int type1=juce::jlimit(0,14,(int)dsp.getValue(serenity::filter1Type)),type2=juce::jlimit(0,14,(int)dsp.getValue(serenity::filter2Type));
+ tx(juce::String("Filter 1 / ")+serenity::filterNames[type1],25,157,156,21,12,CYAN);
+ tx(juce::String("Filter 2 / ")+serenity::filterNames[type2],186,157,164,21,12,PURPLE);
+ tx("Combined / F1 + F2",365,157,219,21,12,TYPE);
  tx("ROUTING",1190,156,69,22,11,MUTE,true);
  button(1266,156,106,31,"Serial",dsp.getValue(serenity::filterRouting)<.5f,CYAN);
  button(1372,156,104,31,"Parallel",dsp.getValue(serenity::filterRouting)>.5f,CYAN);
- graphFilter(22,190,1454,360,val(serenity::cutoff),
-            dsp.getValue(serenity::filter2Enabled)>.5f?val(serenity::filter2Cutoff):-1.f);
+ grid(22,190,1454,360,10,8);
+ for(int band=0;band<2;band++){if(band==1&&dsp.getValue(serenity::filter2Enabled)<.5f)continue;if(band==0&&dsp.getValue(serenity::filter1Enabled)<.5f)continue;
+  const float cut=25.f*std::pow(800.f,val(band==0?serenity::cutoff:serenity::filter2Cutoff)),res=val(band==0?serenity::resonance:serenity::filter2Resonance);
+  juce::Path response;for(int i=0;i<=500;i++){float f=20.f*std::pow(1000.f,i/500.f),db=20.f*std::log10(std::max(1.e-8f,serenity::filterMag(band==0?type1:type2,f,cut,res,48000.f)));
+   float x=27.f+1444.f*i/500.f,y=290.f-juce::jlimit(-55.f,18.f,db)*4.f;if(i==0)response.startNewSubPath(x,y);else response.lineTo(x,y);}
+  g.setColour(c(band==0?CYAN:PURPLE));g.strokePath(response,juce::PathStrokeType(2.f));}
  const float lx[]={76,181,315,445,579,712,856,997,1123,1269,1416};
  const char* axis[]={"20","50","100","200","500","1k","2k","5k","10k","15k","20k"};
  for(int i=0;i<11;i++)tx(axis[i],lx[i]-11,526,58,23,10,MUTE);
  panel(11,573,733,220,"FILTER 1");
  panel(755,573,732,220,"FILTER 2",PURPLE);
- button(674,578,56,24,"ON",true,GOLD);
+ button(674,578,56,24,dsp.getValue(serenity::filter1Enabled)>.5f?"ON":"OFF",dsp.getValue(serenity::filter1Enabled)>.5f,GOLD);
  button(1418,578,57,24,dsp.getValue(serenity::filter2Enabled)>.5f?"ON":"OFF",
         dsp.getValue(serenity::filter2Enabled)>.5f,PURPLE);
- select(21,605,209,"TYPE","LP 24");
- select(768,605,204,"TYPE","LP 12",PURPLE);
+ select(21,605,209,"TYPE",serenity::filterNames[type1]);
+ select(768,605,204,"TYPE",serenity::filterNames[type2],PURPLE);
  const float x1[]={63,149,233,328,399,467,531,602,668};
  const float x2[]={803,890,977,1073,1140,1207,1276,1344,1411};
  const char* labels[]={"CUTOFF","RESONANCE","DRIVE","ENV AMT","KEY TRK","VEL AMT","MIX","SHAPE","SPREAD"};
  for(int i=0;i<9;i++){
-  const int p1=i==0?serenity::cutoff:i==1?serenity::resonance:-1;
-  const int p2=i==0?serenity::filter2Cutoff:i==1?serenity::filter2Resonance:
-                i==6?serenity::filter2Mix:-1;
+  const int ids1[]={serenity::cutoff,serenity::resonance,serenity::filter1Drive,serenity::filter1Env,serenity::filter1Key,serenity::filter1Vel,serenity::filter1Mix,-1,-1};
+  const int ids2[]={serenity::filter2Cutoff,serenity::filter2Resonance,serenity::filter2Drive,serenity::filter2Env,serenity::filter2Key,serenity::filter2Vel,serenity::filter2Mix,-1,-1};
+  const int p1=ids1[i],p2=ids2[i];
   knob(x1[i],680,i<3?29.f:19.f,labels[i],p1,CYAN);
   knob(x2[i],680,i<3?29.f:19.f,labels[i],p2,PURPLE);
  }
@@ -609,7 +614,7 @@ void Painter::modulation(){
  const float envKnobs[]={60,151,240,332,421,513,603,693};
  const char* envLabels[]={"DELAY","ATTACK","HOLD","DECAY","SUSTAIN","RELEASE","CURVE","VEL SENS"};
  for(int i=0;i<8;i++)miniKnob(envKnobs[i],582,envLabels[i],i<6?serenity::envParameter(selectedEnv,i):serenity::env1Curve+2*selectedEnv+i-6,0.f,i>5?PURPLE:CYAN);
- button(23,663,97,25,"LOOP");
+ button(23,663,97,25,"LOOP",dsp.getValue(serenity::env1Loop+selectedEnv)>.5f,GOLD);
  tx("ROUTED TO",129,663,87,23,11,MUTE,true);
  button(217,661,196,28,selectedEnv==0?"Amplitude":"Matrix",true,PURPLE);
  panel(755,118,732,600,"LFOS",PURPLE);
@@ -634,7 +639,7 @@ void Painter::modulation(){
  button(1275,570,76,26,"SYNC",synced,PURPLE);button(1364,570,110,26,"UNIPOLAR",uni,PURPLE);
  miniKnob(803,639,"RATE",serenity::lfoParameter(selectedLfo,0),.5f,PURPLE);
  miniKnob(893,639,"PHASE",serenity::lfoParameter(selectedLfo,2),0.f,PURPLE);
- miniKnob(985,639,"DEPTH",selectedLfo==0?serenity::lfoDepth:-1,0.f,PURPLE);
+ miniKnob(985,639,"FADE IN",serenity::lfo1Fade+selectedLfo,0.f,PURPLE);
  miniKnob(1074,639,"SMOOTH",serenity::lfo1Smooth+3*selectedLfo,0.f,PURPLE);
  tx("ROUTED TO / MATRIX",1127,621,333,29,11,MUTE);
  rr(11,728,1476,64,7,0xff121b2au);outline(11,728,1476,64,7,STROKE);
@@ -716,10 +721,12 @@ void Painter::effects(){
  panel(11,620,457,221,"REVERB");
  panel(478,620,239,221,"FX LFOS",PURPLE);
  panel(726,620,761,221,"FX MODULATION MATRIX",PURPLE);
- waveform(25,660,428,51,4,0,CYAN,.40f);
- select(25,718,162,"TYPE","Hall");
+ grid(25,653,428,34,8,2);juce::Path decayPlot;for(int i=0;i<=120;i++){float q=i/120.f;float x=29.f+420.f*q,y=682.f-24.f*std::pow(std::max(.01f,val(serenity::reverbFeedback)),q*12.f);if(i==0)decayPlot.startNewSubPath(x,y);else decayPlot.lineTo(x,y);}g.setColour(c(CYAN));g.strokePath(decayPlot,juce::PathStrokeType(1.7f));
+ const char* rvTypes[]={"Room","Hall","Large Space","Chamber"};
+ select(25,688,162,"TYPE",rvTypes[juce::jlimit(0,3,(int)dsp.getValue(serenity::reverbType))]);
  const char* reverbs[]={"FEEDBACK","DAMPING","SIZE","PRE DLY","LOW CUT","WIDTH","MIX"};
- for(int i=0;i<7;i++)miniKnob(51+i*63.f,779,reverbs[i],i==6?serenity::reverbMix:i==0?serenity::reverbFeedback:-1,.54f);
+ const int rvIds[]={serenity::reverbFeedback,serenity::reverbDamping,serenity::reverbSize,serenity::reverbPreDelay,serenity::reverbLowCut,serenity::reverbWidth,serenity::reverbMix};
+ for(int i=0;i<7;i++)miniKnob(51+i*63.f,779,reverbs[i],rvIds[i],.54f);
  waveform(549,686,156,47,0,0,PURPLE);
  waveform(549,762,156,47,1,0,PURPLE);
  miniKnob(517,686,"LFO 1",-1,.3f,PURPLE);
@@ -727,8 +734,8 @@ void Painter::effects(){
  for(int row=0;row<6;row++){
   const float y=655+row*32.f;
   tx("S"+juce::String(row+1),735,y,32,27,11,MUTE);
-  select(772,y,195,"","Off",PURPLE);
-  select(994,y,195,"","None",CYAN);
+  rr(772,y+2,195,25,4,DARK);tx("Off",780,y+2,179,25,11,MUTE);
+  rr(994,y+2,195,25,4,DARK);tx("None",1002,y+2,179,25,11,MUTE);
   level(1204,y+16,213,0.f,PURPLE);
   tx("0.00",1435,y+5,50,25,11,MUTE);
  }
