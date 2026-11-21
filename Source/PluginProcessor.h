@@ -89,6 +89,9 @@ public:
  void setFrench(bool enabled) noexcept {frenchUI.store(enabled);}
  int getVoiceCount() const noexcept {return voiceCount.load();}
  float getOutputLevel() const noexcept {return outputMeter.load();}
+ float getOutputScopeSample(int index) const noexcept {
+  return index>=0&&index<256?outputScope[(size_t)index].load(std::memory_order_relaxed):0.f;
+ }
  serenity::ModRoute getRoute(int slot) const noexcept;
  void setRoute(int slot,serenity::ModRoute next) noexcept;
  bool isFavorite(int preset) const noexcept;
@@ -123,6 +126,8 @@ private:
  std::array<std::atomic<float>,serenity::parameterCount> midiOverride{};
  std::atomic<int> learnTarget{-1},lastCC{-1},selectedPreset{0},voiceCount{0};
  std::atomic<float> outputMeter{0.f};
+ // Last rendered mono audio window, atomically published without allocation.
+ std::array<std::atomic<float>,256> outputScope{};
  std::atomic<bool> frenchUI{true};
  std::array<std::atomic<int>,64> modSources{},modDestinations{};
  std::array<std::atomic<float>,64> modAmounts{};
