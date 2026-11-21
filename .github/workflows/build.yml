@@ -1,4 +1,4 @@
-name: Serenity WAVETABLE — Original 10-screen UI Builds
+name: Serenity WAVETABLE — Native JUCE 10-page UI Builds
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: serenity-original-ui-${{ github.workflow }}-${{ github.ref }}
+  group: serenity-native-ui-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: cmake --build build --config Release --parallel 2
 
-      - name: Test actual editor startup and ten-page navigation
+      - name: Test native vector editor, all pages and live pixel updates
         shell: bash
         run: ctest --test-dir build -C Release --output-on-failure --timeout 60
 
@@ -50,7 +50,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v0.7.0-UI-Previews
+          name: Serenity-WAVETABLE-v0.8.0-UI-Previews
           path: build/Serenity-UI-Preview-*.png
           if-no-files-found: warn
           retention-days: 30
@@ -87,7 +87,7 @@ jobs:
       - name: Upload downloadable build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v0.7.0-Original-UI-${{ matrix.platform }}
+          name: Serenity-WAVETABLE-v0.8.0-Original-UI-${{ matrix.platform }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 30

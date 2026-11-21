@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SerenityWavetable VERSION 0.7.0 LANGUAGES C CXX)
+project(SerenityWavetable VERSION 0.8.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Force UTF-8 compilation on Windows. Original French labels use UTF-8 literals.
@@ -63,27 +63,18 @@ if(SERENITY_BUILD_PLUGIN)
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE)
   juce_generate_juce_header(SerenityWavetable)
 
-  set(SERENITY_UI_FILES
-    Assets/UI/skin_oscillators.png
-    Assets/UI/skin_editor.png
-    Assets/UI/skin_filters.png
-    Assets/UI/skin_modulation.png
-    Assets/UI/skin_effects.png
-    Assets/UI/skin_arpeggiator.png
-    Assets/UI/skin_sequencer.png
-    Assets/UI/skin_matrix.png
-    Assets/UI/skin_presets.png
-    Assets/UI/skin_settings.png)
-  juce_add_binary_data(SerenitySkins SOURCES ${SERENITY_UI_FILES})
-
+  # IMPORTANT: the reference PNGs remain in Assets/UI for visual comparison
+  # only; they are NOT linked or displayed by the plugin.
+  # Every pixel is reconstructed at runtime from native JUCE Graphics.
   target_sources(SerenityWavetable PRIVATE
     Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    Source/PluginEditor.cpp
+    Source/SerenityNativeUI.cpp)
   target_include_directories(SerenityWavetable PRIVATE Source Source/DSP)
   target_compile_definitions(SerenityWavetable PUBLIC
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
   target_link_libraries(SerenityWavetable PRIVATE
-    serenity_dsp SerenitySkins
+    serenity_dsp
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp
     juce::juce_gui_extra
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
@@ -92,7 +83,7 @@ if(SERENITY_BUILD_PLUGIN)
     add_executable(serenity_editor_startup_smoke Tests/EditorStartupSmoke.cpp)
     target_include_directories(serenity_editor_startup_smoke PRIVATE
       Source "${CMAKE_CURRENT_BINARY_DIR}/SerenityWavetable_artefacts/JuceLibraryCode")
-    target_link_libraries(serenity_editor_startup_smoke PRIVATE SerenityWavetable SerenitySkins juce::juce_audio_utils)
+    target_link_libraries(serenity_editor_startup_smoke PRIVATE SerenityWavetable juce::juce_audio_utils)
     add_test(NAME serenity_editor_startup_smoke COMMAND serenity_editor_startup_smoke)
     set_tests_properties(serenity_editor_startup_smoke PROPERTIES TIMEOUT 60)
   endif()
