@@ -50,7 +50,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v0.13.2-UI-Previews
+          name: Serenity-WAVETABLE-v1.0.0-UI-Previews
           path: build/Serenity-UI-Preview-*.png
           if-no-files-found: warn
           retention-days: 30
@@ -59,7 +59,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v0.13.2-Original-References
+          name: Serenity-WAVETABLE-v1.0.0-Original-References
           path: Assets/UI/skin_*.png
           if-no-files-found: error
           retention-days: 30
@@ -96,7 +96,7 @@ jobs:
       - name: Upload downloadable build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v0.13.2-Original-UI-${{ matrix.platform }}
+          name: Serenity-WAVETABLE-v1.0.0-Original-UI-${{ matrix.platform }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 30

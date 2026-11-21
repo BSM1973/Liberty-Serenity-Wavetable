@@ -1,28 +1,29 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-**État : code source de développement 0.1 (non commercial, non validé en DAW).**
+Version 1.0.0 — promotion de la base 0.13.2 (build 125 réussi sur macOS ARM64 et Windows x64), sans ajout de fonctionnalités ni modification du code Source. Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
-Projet natif **C++17 / JUCE 8.0.10**, conçu pour macOS AU/VST3/Standalone et Windows VST3/Standalone.
-Les dix captures fournies constituent la **référence graphique de départ** : mêmes proportions, mêmes panneaux, même palette, mêmes dix onglets. Le code embarque ces captures telles quelles comme calques de référence et superpose les premières commandes réelles. Il ne s'agit **pas encore** d'une interface entièrement redessinée en composants natifs. Certaines commandes visibles sur les captures n'ont pas encore de fonction.
+## Plateformes et formats
 
-## Déjà dans le code
+- macOS Apple Silicon : AU, VST3, Standalone.
+- Windows x64 : VST3, Standalone.
+- C++17, JUCE 8.0.10.
 
-- Moteur DSP compilé et testé sans JUCE : quatre générateurs de formes d'ondes à tables interpolées, 16 familles × 8 frames, mipmaps harmoniques pour limiter l'aliasing, unison réglable jusqu'à 16 oscillateurs par générateur, jusqu'à 32 notes, stéréo.
-- Enveloppe d'amplitude ADSR et six enveloppes de modulation simples. Une base de huit sorties LFO est disponible, sans éditeur graphique complet.
-- Deux étages de filtrage passe-bas, routage série/parallèle, réglages de coupure, mélange et activation du filtre 2. Les 15 types annoncés dans le cahier des charges ne sont **pas** implémentés.
-- Matrice 64 routages réellement prise en compte dans le DSP pour hauteur, position de table, cutoff, gain et panoramique. Éditeur sur trois pages de 24 emplacements.
-- Saturation douce, délai stéréo simple et réverbération algorithmique simple. **Pas 30 effets livrés**.
-- 100 **définitions de factory presets** (12+15+10+12+10+8+10+8+8+7), distinctes et générées de manière déterministe. Elles ne sont pas encore individuellement écoutées, équilibrées ni validées comme presets commerciaux.
-- Navigateur de presets : catégories, recherche, sélection, favoris. Export/import de l'état du plugin dans un fichier `.serenitypreset`.
-- Commandes natives interactives initiales : navigation des dix onglets, oscillateurs A/B/C/D marche/arrêt, choix de formes d'ondes, position de table, knobs principaux, filtres et macros partiellement reliées au DSP. Glisser vertical, molette, Maj+glisser fin, double-clic réinitialisation.
-- FR/EN (FR par défaut), navigation et panneaux principaux traduits. **La traduction intégrale de tous les libellés incrustés dans les dix captures reste à réaliser en composants natifs.**
-- MIDI Learn sur les paramètres déclarés : clic droit sur un paramètre pris en charge → « Apprentissage MIDI CC » → mouvement de contrôleur CC. Mapping sauvegardé dans l'état de session.
-- Restauration via APVTS : paramètres, preset courant, FR/EN, favoris, matrice et mappings MIDI.
-- Test compilé sous Linux pour le cœur DSP (sans plugin host) et workflow GitHub Actions prêt à tester les formats.
+## Fonctions présentes
+
+- Quatre générateurs, tables d'ondes interpolées, 16 familles de tables d'usine, édition de tables personnalisées, unison, warp, shape, FM et modulation en anneau.
+- Deux filtres à variables d'état, 15 modes chacun, routage série/parallèle.
+- Six enveloppes DAHDSR avec boucle et courbe, huit LFO avec synchronisation et fondu.
+- Matrice de modulation de 64 emplacements, macros, arpégiateur et séquenceur jusqu'à 64 pas.
+- Effets : saturation, EQ, compression, chorus/flanger/phaser, délai, réverbération stéréo FDN et traitements de modulation.
+- 100 presets d'usine, navigateur, recherche, favoris, import/export de l'état.
+- Interface native JUCE à dix pages, français/anglais, ajustement proportionnel à l'écran, sans ascenseur. Les dix images de référence sont conservées dans Assets/UI et ne servent pas de fonds statiques.
+- MIDI Learn sur paramètres pris en charge, sauvegarde des paramètres et des mappings.
+
+## Validation et distribution
+
+Les tests automatiques DSP et UI sont exécutés sur les deux plateformes. Les archives de plugins et les captures natives sont publiées par GitHub Actions. Le build vert ne constitue pas une certification de fidélité pixel par pixel, d'absence de tout défaut graphique ou de compatibilité exhaustive avec tous les DAW. La validation auditive individuelle des presets et la signature/notarisation commerciale ne sont pas attestées. Les archives actuelles sont des binaires non signés, pas des installateurs commerciaux.
 
 ## Compiler
-
-Le dépôt doit être accessible à JUCE 8.0.10 par Internet, ou disposer d'une copie locale de JUCE.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
@@ -30,26 +31,10 @@ cmake --build build --config Release --parallel 4
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Avec un JUCE local :
+Pour JUCE local : ajouter `-DJUCE_SOURCE_DIR=/chemin/vers/JUCE` à la configuration. Pour les tests DSP seuls : `-DSERENITY_BUILD_PLUGIN=OFF`.
 
-```bash
-cmake -S . -B build -DJUCE_SOURCE_DIR=/chemin/vers/JUCE
-```
+## Règles permanentes
 
-Pour les tests DSP sans JUCE (vérifiés ici) :
+Zéro chevauchement, aucun caractère corrompu, accents français corrects, aucune commande trompeuse, fenêtre complète sans ascenseur, fidélité aux références, aucune régression sonore. Artefacts téléchargeables après validation des builds.
 
-```bash
-cmake -S . -B build-dsp -DSERENITY_BUILD_PLUGIN=OFF -DBUILD_TESTING=ON
-cmake --build build-dsp
-ctest --test-dir build-dsp --output-on-failure
-```
-
-## Règles de développement
-
-1. Ne jamais remplacer les captures par un autre design sans accord. Migrer progressivement vers des éléments natifs reproduisant ces écrans.
-2. Aucun chevauchement, aucun glyphe corrompu, aucune zone tronquée, textes FR accentués et anglais vérifiés.
-3. Ne jamais annoncer « 30 effets », « éditeur WAV », « 64 pas » ou « 100 presets finalisés » tant que chaque fonction n'est pas réellement câblée, testée et validée à l'écoute.
-4. Aucun traitement bloquant ni allocation dynamique volontaire dans `Engine::render()`.
-5. Pas d'installateur commercial, signature Apple ou notarisation fournis dans cette version.
-
-Voir [`docs/ETAT_ET_SUITE.md`](docs/ETAT_ET_SUITE.md) pour le détail des modules encore nécessaires.
+Voir [l'historique de validation visuelle](docs/VISUAL_ACCEPTANCE_V0132.md).
