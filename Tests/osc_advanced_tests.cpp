@@ -29,7 +29,7 @@ int main() {
  };
  auto difference=[](const Samples& a,const Samples& b){
   double total=0.0;
-  for(int i=0;i<block;i++)total+=std::abs(a[(size_t)i]-b[(size_t)i]);
+  for(size_t i=0;i<a.size();i++)total+=std::abs(a[i]-b[i]);
   return total;
  };
  const auto original=render(p);
