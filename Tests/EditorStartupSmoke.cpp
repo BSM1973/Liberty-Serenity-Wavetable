@@ -123,7 +123,7 @@ int main(){
   if(tab==0){
    const auto baseline=pageDigests[0];
    const float original=processor.getValue(serenity::oscALevel);
-   processor.setValue(serenity::oscALevel,.07f);
+   processor.setValue(serenity::oscALevel,original>=.5f?0.f:1.f);
    auto changed=juce::Image(juce::Image::ARGB,editor->getWidth(),editor->getHeight(),true);
    juce::Graphics other(changed);
    editor->paint(other);
