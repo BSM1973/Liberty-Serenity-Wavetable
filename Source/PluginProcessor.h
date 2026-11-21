@@ -65,8 +65,8 @@ public:
  float getCustomPoint(int oscillator,int frame,int sample) const noexcept;
  // Read-only live preview: exact factory frames / editable samples.
  // No screenshot, approximation or audio-thread mutation.
- float getWavetablePreviewPoint(int osc,int frame,int sample) const noexcept;
- float getWavetablePreview(float oscIndex,float position,float phase,
+ float getWavetablePreviewPoint(int oscillator,int wave,int frame,int sample) const noexcept;
+ float getWavetablePreview(int oscillator,int wave,float position,float phase,
                            bool applyTransforms=true) const noexcept;
  void commitCustomFrame(int oscillator,int frame,const std::array<float,serenity::editableSamples>& points) noexcept;
  void normalizeCustomFrame(int oscillator,int frame) noexcept;
