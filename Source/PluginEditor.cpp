@@ -245,8 +245,9 @@ void SerenityEditor::paintInteraction(juce::Graphics& g){
   }
  }
  if(statusCountdown>0){
-  g.setColour(juce::Colour(0xee111b2b));g.fillRoundedRectangle(scaleRect(745,845,726,37),5.f);
-  drawText(g,status,762,849,692,27,aqua,13,true);
+  // Compact feedback stays in the 22-pixel gap between routing rail and footer.
+  g.setColour(juce::Colour(0xee111b2b));g.fillRoundedRectangle(scaleRect(919,842,557,18),4.f);
+  drawText(g,status,925,843,541,15,aqua,10,true);
  }
 }
 void SerenityEditor::paint(juce::Graphics& g){
