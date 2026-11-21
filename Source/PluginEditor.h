@@ -9,9 +9,9 @@ public:
  explicit SerenityEditor(SerenityAudioProcessor&);
  ~SerenityEditor() override = default;
  void paint(juce::Graphics&) override;
+ void paintNativePage(juce::Graphics&);
  void resized() override;
- // Regression checks, not a replacement UI: every tab uses an original screenshot.
- bool hasTenOriginalScreens() const;
+ // Native vector pages are rendered by JUCE; no screenshot background is loaded.
  void selectTabForSmokeTest(int index);
  void mouseDown(const juce::MouseEvent&) override;
  void mouseDrag(const juce::MouseEvent&) override;
@@ -22,7 +22,6 @@ public:
 private:
  struct Hotspot {float x,y,r;int parameter;};
  SerenityAudioProcessor& synth;
- std::array<juce::Image,10> skins;
  juce::TextEditor search;
  std::unique_ptr<juce::FileChooser> fileChooser;
  int tab=0,category=0,listOffset=0,matrixPage=0,selectedParameter=-1;
