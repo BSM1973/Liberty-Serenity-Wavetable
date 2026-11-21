@@ -11,6 +11,7 @@
 #include "SerenitySequencer.h"
 #include "SerenityCustomWavetable.h"
 #include "SerenityBandlimitedWavetable.h"
+#include "SerenityOscTransform.h"
 
 namespace serenity {
 constexpr float pi=3.14159265358979323846f;
@@ -28,6 +29,9 @@ struct Params {
  float lfoRate=5.0f, lfoDepth=0.0f, wavemorph=0.0f;
  float oscLevel[4]={0.70f,0.0f,0.0f,0.0f};
  float oscPitch[4]={0,0,0,-12};
+ float oscOctave[4]{},oscSemi[4]{},oscFine[4]{},oscPan[4]{};
+ float oscWarp[4]{},oscShape[4]{};
+ int oscWarpMode[4]{},oscShapeMode[4]{};
  int wave[4]={1,0,3,0};
  int unison[4]={1,1,1,1};
  int polyphony=16;
@@ -81,6 +85,11 @@ public:
     }
     if(mx>0.000001f) for(int n=0;n<tableSize;n++) tables[offset(w,mip,frame,n)]/=mx;
    }
+ }
+ float previewPoint(int wave,int frame,int sampleIndex) const noexcept {
+  if(wave<0||wave>=waveCount||frame<0||frame>=frames||
+     sampleIndex<0||sampleIndex>=tableSize)return 0.f;
+  return tables[offset(wave,0,frame,sampleIndex)];
  }
  float sample(int wave,float phase,float framePosition,float hz,float sr) const noexcept {
   if(!std::isfinite(phase)||!std::isfinite(hz)||sr<=0) return 0;
@@ -165,6 +174,10 @@ public:
  }
  float customSample(int oscillator,int frame,int sample) const noexcept {
   return customTable.get(oscillator,frame,sample);
+ }
+ // Factory bank is immutable after construction; this read is safe from the UI.
+ float previewFactoryPoint(int wave,int frame,int index) const noexcept {
+  return bank.previewPoint(wave,frame,index);
  }
  // Replaces one immutable fixed-size frame snapshot at a block boundary.
  // FFT and allocation are deliberately absent from this API and render().
@@ -251,17 +264,22 @@ public:
      float level=clamp(p.oscLevel[gen],0,1);
      if(level<.00001f)continue;
      int uni=std::max(1,std::min(maxUnison,p.unison[gen]));
-     float base=noteHz(v.note)*std::pow(2.f,(p.oscPitch[gen]+pitchMod+(float)seq.pitch)/12.f);
+     float base=noteHz(v.note)*std::pow(2.f,(p.oscPitch[gen]
+      +p.oscOctave[gen]*12.f+p.oscSemi[gen]+p.oscFine[gen]*.01f
+      +pitchMod+(float)seq.pitch)/12.f);
      float amp=level/(std::sqrt((float)uni));
      for(int u=0;u<uni;u++){
       float det=(uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.detune*.19f;
       float freq=base*std::pow(2.f,det/12.f);
       float &ph=v.phase[gen][u];
+      const float warped=oscillatorWarpPhase(ph,p.oscWarp[gen],p.oscWarpMode[gen]);
       float x=(p.wave[gen]==waveCount ?
-       customBandlimited.sample(gen,ph,clamp(p.position+frameMod,0,1),freq,sr) :
-       bank.sample(p.wave[gen],ph,clamp(p.position+frameMod,0,1),freq,sr))*amp;
+       customBandlimited.sample(gen,warped,clamp(p.position+frameMod,0,1),freq,sr) :
+       bank.sample(p.wave[gen],warped,clamp(p.position+frameMod,0,1),freq,sr));
+      x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen])*amp;
       ph+=freq/sr;if(ph>=1.f)ph-=std::floor(ph);
-      float pan=clamp(((uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.spread)+panMod,-1,1);
+      float pan=clamp(((uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.spread)+panMod+
+                       p.oscPan[gen],-1,1);
       vl+=x*(1-pan)*.5f;vr+=x*(1+pan)*.5f;
      }
     }
