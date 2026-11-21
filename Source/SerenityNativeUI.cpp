@@ -240,7 +240,17 @@ struct Painter {
  }
  juce::String value(int idx,int precision=2) const {
   if(idx<0)return "-";float v=dsp.getValue(idx);if(std::abs(v)<.00005f)v=0.f;
-  if((idx>=serenity::oscALevel&&idx<=serenity::oscDLevel))return juce::String(v,precision);
+  using namespace serenity;
+  auto hz=[](float f){return f>=1000.f?juce::String(f/1000.f,2)+" kHz":juce::String(f,0)+" Hz";};
+  if(idx==cutoff||idx==filter2Cutoff)return hz(25.f*std::pow(800.f,v));
+  if(idx==eqLowFreq||idx==eqMidFreq||idx==eqHighFreq||idx==reverbLowCut||idx==fxRingFreq)return hz(v);
+  if(idx==eqLowGain||idx==eqMidGain||idx==eqHighGain||idx==compThreshold||idx==compMakeup)return juce::String(v,1)+" dB";
+  if(idx==compRatio)return juce::String(v,1)+":1";
+  if(idx==delayTime||idx==reverbPreDelay||idx==compAttack||idx==compRelease)return juce::String(v*1000.f,v<.01f?1:0)+" ms";
+  for(int k=0;k<6;k++)for(int j:{0,1,2,3,5})if(idx==envParameter(k,j))return v>=1.f?juce::String(v,2)+" s":juce::String(v*1000.f,v<.01f?1:0)+" ms";
+  for(int k=0;k<8;k++){if(idx==lfoParameter(k,0))return juce::String(v,2)+" Hz";if(idx==lfoParameter(k,2))return juce::String(v*360.f,0)+" deg";if(idx==lfo1Fade+k)return juce::String(v,2)+" s";}
+  if(idx==tremRate||idx==modFxRate)return juce::String(v,2)+" Hz";
+  if((idx>=oscAOctave&&idx<=oscDSemi)||(idx>=oscAUnison&&idx<=oscDUnison))return juce::String((int)std::lround(v));
   return juce::String(v,precision);
  }
  void knob(float x,float y,float radius,const char* name,int idx=-1,
@@ -714,19 +724,39 @@ void Painter::filters(){
  const int type1=juce::jlimit(0,14,(int)dsp.getValue(serenity::filter1Type)),type2=juce::jlimit(0,14,(int)dsp.getValue(serenity::filter2Type));
  tx(juce::String("Filter 1 / ")+serenity::filterNames[type1],25,157,156,21,12,CYAN);
  tx(juce::String("Filter 2 / ")+serenity::filterNames[type2],186,157,164,21,12,PURPLE);
- tx("Combined / F1 + F2",365,157,219,21,12,TYPE);
+ tx(tr("Combined / linear response","Combiné / réponse linéaire"),365,157,300,21,12,TYPE);
  tx("ROUTING",1190,156,69,22,11,MUTE,true);
  button(1266,156,106,31,"Serial",dsp.getValue(serenity::filterRouting)<.5f,CYAN);
  button(1372,156,104,31,"Parallel",dsp.getValue(serenity::filterRouting)>.5f,CYAN);
- grid(22,190,1454,360,10,8);
- for(int band=0;band<2;band++){if(band==1&&dsp.getValue(serenity::filter2Enabled)<.5f)continue;if(band==0&&dsp.getValue(serenity::filter1Enabled)<.5f)continue;
-  const float cut=25.f*std::pow(800.f,val(band==0?serenity::cutoff:serenity::filter2Cutoff)),res=val(band==0?serenity::resonance:serenity::filter2Resonance);
-  juce::Path response;for(int i=0;i<=500;i++){float f=20.f*std::pow(1000.f,i/500.f),db=20.f*std::log10(std::max(1.e-8f,serenity::filterMag(band==0?type1:type2,f,cut,res,48000.f)));
-   float x=27.f+1444.f*i/500.f,y=290.f-juce::jlimit(-55.f,18.f,db)*4.f;if(i==0)response.startNewSubPath(x,y);else response.lineTo(x,y);}
-  g.setColour(c(band==0?CYAN:PURPLE));g.strokePath(response,juce::PathStrokeType(2.f));}
- const float lx[]={76,181,315,445,579,712,856,997,1123,1269,1416};
+ grid(22,190,1454,360,1,1);
+ const float left=76.f,right=1458.f,top=207.f,bottom=525.f;
+ auto fx=[&](float hz){return left+(right-left)*std::log10(hz/20.f)/3.f;};
+ auto fy=[&](float db){return top+(bottom-top)*(24.f-juce::jlimit(-48.f,24.f,db))/72.f;};
+ const float freqs[]={20,50,100,200,500,1000,2000,5000,10000,15000,20000};
  const char* axis[]={"20","50","100","200","500","1k","2k","5k","10k","15k","20k"};
- for(int i=0;i<11;i++)tx(axis[i],lx[i]-11,526,58,23,10,MUTE);
+ for(int i=0;i<11;i++){float x=fx(freqs[i]);line(x,top,x,bottom,0xff263549u,.8f);tx(axis[i],x-19,526,38,20,10,MUTE,false,1);}
+ for(int db=-48;db<=24;db+=12){const float y=fy((float)db);line(left,y,right,y,db==0?0xff526779u:0xff263549u,db==0?1.3f:.8f);tx(juce::String(db>0?"+":"")+juce::String(db),25,y-9,43,18,10,MUTE,false,2);}
+ const float f1=25.f*std::pow(800.f,val(serenity::cutoff)),f2=25.f*std::pow(800.f,val(serenity::filter2Cutoff));
+ const bool on1=dsp.getValue(serenity::filter1Enabled)>.5f,on2=dsp.getValue(serenity::filter2Enabled)>.5f,parallel=dsp.getValue(serenity::filterRouting)>.5f;
+ const float mix1=dsp.getValue(serenity::filter1Mix),mix2=dsp.getValue(serenity::filter2Mix);
+ // Linear transfer from the same SVF topology: no approximation by adding dB curves.
+ using Z=std::complex<float>;
+ auto response=[&](int mode,float hz,float cut,float res){
+  float r=std::tan(pi*juce::jlimit(10.f,21600.f,hz)/48000.f)/std::tan(pi*juce::jlimit(10.f,21600.f,cut)/48000.f),k=2.f-1.85f*res;
+  Z z(0,r),den=1.f+k*z+z*z;Z h=serenity::filterOutput(mode,Z(1,0),Z(1,0)/den,z/den,z*z/den,k);return serenity::doubleFilter(mode)?h*h:h;
+ };
+ juce::Path paths[3];
+ for(int i=0;i<=500;i++){float f=20.f*std::pow(1000.f,i/500.f);Z a=response(type1,f,f1,val(serenity::resonance)),b=response(type2,f,f2,val(serenity::filter2Resonance));
+  Z first=on1?Z(1,0)*(1.f-mix1)+a*mix1:Z(1,0),combined=first;
+  if(on2)combined=parallel?first*(1.f-.5f*mix2)+b*(.5f*mix2):first*(Z(1,0)*(1.f-mix2)+b*mix2);
+  Z z[]={a,b,combined};for(int p=0;p<3;p++){float y=fy(20.f*std::log10(std::max(1.e-8f,std::abs(z[p]))));if(i==0)paths[p].startNewSubPath(fx(f),y);else paths[p].lineTo(fx(f),y);}
+ }
+ auto area=paths[2];area.lineTo(right,bottom);area.lineTo(left,bottom);area.closeSubPath();
+ g.setGradientFill(juce::ColourGradient(c(CYAN).withAlpha(.22f),left,top,c(CYAN).withAlpha(.015f),left,bottom,false));g.fillPath(area);
+ g.setColour(c(CYAN).withAlpha(on1?.8f:.25f));g.strokePath(paths[0],juce::PathStrokeType(1.7f));
+ g.setColour(c(PURPLE).withAlpha(on2?.85f:.28f));g.strokePath(paths[1],juce::PathStrokeType(1.7f));
+ g.setColour(c(TYPE));g.strokePath(paths[2],juce::PathStrokeType(2.f));
+ for(int k=0;k<2;k++){float f=k==0?f1:f2;float cx=fx(f);line(cx,top,cx,bottom,k==0?0xff385b68u:0xff49405du,.9f);float yy=fy(20.f*std::log10(std::max(1.e-8f,serenity::filterMag(k==0?type1:type2,f,f,k==0?val(serenity::resonance):val(serenity::filter2Resonance),48000.f))));g.setColour(c(k==0?CYAN:PURPLE));g.fillEllipse(cx-5,yy-5,10,10);}
  panel(11,573,733,220,"FILTER 1");
  panel(755,573,732,220,"FILTER 2",PURPLE);
  button(674,578,56,24,dsp.getValue(serenity::filter1Enabled)>.5f?"ON":"OFF",dsp.getValue(serenity::filter1Enabled)>.5f,GOLD);
@@ -763,6 +793,8 @@ void Painter::modulation(){
  auto segment=[&](float seconds,float y0,float y1){float width=seconds*scale;for(int j=1;j<=48;j++){float q=j/48.f;envelope.lineTo(x+width*q,serenity::mix(y0,y1,serenity::envelopeCurve(q,curve)));}x+=width;};
  segment(t[1],base,peak);x+=t[2]*scale;envelope.lineTo(x,peak);
  segment(t[3],peak,sy);x+=.5f*scale;envelope.lineTo(x,sy);segment(t[5],sy,base);
+ auto envFill=envelope;envFill.lineTo(x,base);envFill.lineTo(43.f,base);envFill.closeSubPath();
+ g.setGradientFill(juce::ColourGradient(c(CYAN).withAlpha(.3f),43,peak,c(CYAN).withAlpha(.02f),43,base,false));g.fillPath(envFill);
  g.setColour(c(CYAN));g.strokePath(envelope,juce::PathStrokeType(3.f));
  tx("NOTE ON",43,213,120,18,11,MUTE);tx("DAHDSR",580,213,130,18,11,MUTE,true,2);
  const float envKnobs[]={60,151,240,332,421,513,603,693};
@@ -779,12 +811,15 @@ void Painter::modulation(){
  const float phase=dsp.getValue(serenity::lfoParameter(selectedLfo,2));
  const bool uni=dsp.getValue(serenity::lfoParameter(selectedLfo,3))>.5f;
  juce::Path wave;
- for(int i=0;i<=512;i++){float x=777.f+688.f*i/512.f;float v=serenity::lfoWave((float)i/512.f+phase,shape);
+ for(int i=0;i<=512;i++){float x=777.f+688.f*i/512.f;float v=serenity::lfoWave(2.f*(float)i/512.f+phase,shape);
   float y=uni?506.f-(v+1.f)*125.f:366.f-v*125.f;if(i==0)wave.startNewSubPath(x,y);else wave.lineTo(x,y);}
+ auto wf=wave;wf.lineTo(1465.f,uni?506.f:366.f);wf.lineTo(777.f,uni?506.f:366.f);wf.closeSubPath();
+ g.setGradientFill(juce::ColourGradient(c(PURPLE).withAlpha(.22f),777,235,c(PURPLE).withAlpha(.025f),777,506,false));g.fillPath(wf);
  g.setColour(c(PURPLE));g.strokePath(wave,juce::PathStrokeType(2.f));
  const char* shapes[]={"Sine","Triangle","Saw Up","Square","Saw Down"};
  tx(shapes[juce::jlimit(0,4,shape)],787,213,135,21,11,PURPLE,true);
- tx(juce::String(dsp.getValue(serenity::lfoParameter(selectedLfo,0)),2)+" Hz",1378,213,73,19,12,MUTE,true,2);
+ serenity::LfoSettings cfg;cfg.sync=dsp.getValue(serenity::lfo1Sync+3*selectedLfo)>.5f;cfg.division=(int)dsp.getValue(serenity::lfo1Division+3*selectedLfo);
+ tx(juce::String(serenity::lfoFrequency(cfg,dsp.getValue(serenity::lfoParameter(selectedLfo,0)),dsp.getHostTempo()),2)+" Hz",1360,213,96,19,12,MUTE,true,2);
  select(767,546,175,"SHAPE",shapes[juce::jlimit(0,4,shape)],PURPLE);
  const bool synced=dsp.getValue(serenity::lfo1Sync+3*selectedLfo)>.5f;
  const char* divisions[]={"1/1","1/2","1/4 D","1/4","1/4 T","1/8","1/16 D","1/8 T","1/16","1/16 T","1/32","1/64"};
@@ -926,13 +961,16 @@ void Painter::arpeggiator(){
   const bool active=first+i<length;
   if(first+i==playing&&dsp.getSequenceMode()==1)rect(x-4,381,77,246,0xff1b3445u);
   const float by=493.f;
-  rect(x,step.pitch>=0?by-h:by,65,std::max(2.f,h),active?CYAN:0xff294f59u);
+  const float yy=step.pitch>=0?by-h:by,hh=std::max(2.f,h);
+  g.setGradientFill(juce::ColourGradient(c(active?CYAN:0xff294f59u),x,yy,c(active?0xff246273u:0xff172d3bu),x,yy+hh,false));g.fillRoundedRectangle(x,yy,65,hh,2.f);
   tx(juce::String(step.pitch>0?"+":"")+juce::String(step.pitch),
     x+18,step.pitch>=0?by-h-23:by+h+4,50,18,11,active?TYPE:MUTE,true);
   const int midi=juce::jlimit(0,127,60+step.pitch);
   tx(juce::String(names[midi%12])+juce::String(midi/12-1),x+10,626,54,17,10,MUTE);
   tx(juce::String(first+i+1),x+25,650,48,17,10,MUTE);
  }
+ for(int i=-24;i<=24;i+=12){float y=493.f-i/24.f*122.f;tx(juce::String(i>0?"+":"")+juce::String(i),28,y-8,41,16,10,MUTE,false,2);}
+ if(length>first&&length<first+16){const float end=83.f+(length-first)*87.f-10.f;line(end,367,end,626,GOLD,1.f);tx(tr("PATTERN ENDS","FIN DU MOTIF"),end+4,367,120,18,10,GOLD);}
  line(74,494,1465,494,0xff3a5468u,1.6f);
  panel(11,699,1476,142,"PATTERN TOOLS",GOLD);
  const char* patterns[]={"OCTAVES","MAJOR","MINOR","MINOR 7TH","MAJOR 7TH","UP-DOWN","FIFTHS","SUS 4","CLEAR"};
@@ -975,13 +1013,18 @@ void Painter::sequencer(){
    float middle=type==1?gTop+gHeight-7.f:gTop+gHeight*.5f;
    const float maxH=(type==1?gHeight-15.f:gHeight*.45f);
    float size=std::max(2.f,std::abs(v)*maxH);
-   rect(x,(type==1||v>=0.f)?middle-size:middle,65,size,
-        active?colour:0xff2b4a56u);
+   const float yy=(type==1||v>=0.f)?middle-size:middle;
+   g.setGradientFill(juce::ColourGradient(c(active?colour:0xff2b4a56u),x,yy,c(active?0xff263d58u:0xff172632u),x,yy+size,false));g.fillRoundedRectangle(x,yy,65,size,1.5f);
    if(active && playing==first+i&&dsp.getSequenceMode()==2)
     outline(x-4,gTop+3,73,gHeight-6,3,GOLD,1.5f);
    rr(x+15,gTop+gHeight-20,35,16,3,DARK);
    tx(juce::String(first+i+1),x+15,gTop+gHeight-20,35,16,10,TYPE,true,1);
   }
+  const float cy=type==1?gTop+gHeight-7.f:gTop+gHeight*.5f;
+  tx(type==0?"+24":type==1?"1.0":"+1",28,gTop+1,42,16,10,MUTE,false,2);
+  tx(type==1?"0.5":"0",28,gTop+gHeight*.5f-8,42,16,10,MUTE,false,2);
+  tx(type==0?"-24":type==1?"0.0":"-1",28,gTop+gHeight-19,42,16,10,MUTE,false,2);
+  if(steps>first&&steps<first+16){float edge=84.f+(steps-first)*87.f-10.f;line(edge,gTop+1,edge,gTop+gHeight-2,GOLD,1.f);}
  };
  lane(266,193,"PITCH · SEMITONES",0,PURPLE);
  lane(473,156,"LEVEL · VELOCITY, 0 = REST",1,CYAN);
@@ -1020,7 +1063,9 @@ void Painter::matrix(){
       bx+77,y+2,154,27,13,route.source>=0?CYAN:MUTE);
    tx(route.destination>=0&&route.destination<5?dst[route.destination]:"None",
       bx+285,y+2,154,27,13,route.destination>=0?CYAN:MUTE);
-   level(bx+463,y+13,146,(route.amount+1.f)*.5f,PURPLE);
+   const float pos=bx+463+146.f*(route.amount+1.f)*.5f,center=bx+536;
+   rr(bx+463,y+13,146,4,2,DARK);rr(std::min(pos,center),y+13,std::abs(pos-center),4,2,PURPLE);rr(pos-3,y+8,6,14,3,0xff8ca0b7u);
+   for(float dx:{bx+228,bx+430}){juce::Path arrow;arrow.addTriangle(dx,y+12,dx+7,y+12,dx+3.5f,y+17);g.setColour(c(MUTE));g.fillPath(arrow);}
    tx(juce::String(route.amount,2),bx+613,y+2,74,27,12,MUTE);
    button(bx+687,y+1,25,29,"x");
   }

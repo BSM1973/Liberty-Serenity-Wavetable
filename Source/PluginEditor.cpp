@@ -285,7 +285,7 @@ std::vector<SerenityEditor::Hotspot> SerenityEditor::hotspots()const {
    for(int k=0;k<7;k++)hs.push_back({600.f+k*65.5f,325,23,eqLowGain+k});
    for(int k=0;k<6;k++)hs.push_back({1100.f+k*65.f,325,23,compThreshold+k});
    for(int k=0;k<4;k++)hs.push_back({58.f+k*66.f,548,23,modFxRate+k});break;
-  case 9:hs.insert(hs.end(),{{88,215,30,master},{378,215,31,cutoff},{519,215,30,master}});break;
+  case 9:hs.push_back({517,218,30,master});break;
   default:break;
  }
  return hs;
