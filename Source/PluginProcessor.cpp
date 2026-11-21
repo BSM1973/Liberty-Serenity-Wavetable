@@ -30,7 +30,86 @@ const std::array<ParamSpec,parameterCount> specs={{
  {"oscAShapeMode",0,3,0},{"oscBShapeMode",0,3,0},{"oscCShapeMode",0,3,0},{"oscDShapeMode",0,3,0},
  {"oscABlend",0,1,0},{"oscBBlend",0,1,0},{"oscCBlend",0,1,0},{"oscDBlend",0,1,0},
  {"oscAPhase",0,1,0},{"oscBPhase",0,1,0},{"oscCPhase",0,1,0},{"oscDPhase",0,1,0},
- {"oscARandPhase",0,1,0},{"oscBRandPhase",0,1,0},{"oscCRandPhase",0,1,0},{"oscDRandPhase",0,1,0}
+ {"oscARandPhase",0,1,0},{"oscBRandPhase",0,1,0},{"oscCRandPhase",0,1,0},{"oscDRandPhase",0,1,0},
+ {"fmBA",0,1,0},
+ {"fmCA",0,1,0},
+ {"fmCB",0,1,0},
+ {"ringAmount",0,1,0},
+ {"fmMode",0,1,0},
+ {"ringMode",0,1,0},
+ {"env1Delay",0,5,0},
+ {"env1Hold",0,5,0},
+ {"env2Delay",0,5,0},
+ {"env2Attack",.001f,10,.004f},
+ {"env2Hold",0,5,0},
+ {"env2Decay",.001f,10,.45f},
+ {"env2Sustain",0,1,.7f},
+ {"env2Release",.001f,12,.35f},
+ {"env3Delay",0,5,0},
+ {"env3Attack",.001f,10,.004f},
+ {"env3Hold",0,5,0},
+ {"env3Decay",.001f,10,.45f},
+ {"env3Sustain",0,1,.7f},
+ {"env3Release",.001f,12,.35f},
+ {"env4Delay",0,5,0},
+ {"env4Attack",.001f,10,.004f},
+ {"env4Hold",0,5,0},
+ {"env4Decay",.001f,10,.45f},
+ {"env4Sustain",0,1,.7f},
+ {"env4Release",.001f,12,.35f},
+ {"env5Delay",0,5,0},
+ {"env5Attack",.001f,10,.004f},
+ {"env5Hold",0,5,0},
+ {"env5Decay",.001f,10,.45f},
+ {"env5Sustain",0,1,.7f},
+ {"env5Release",.001f,12,.35f},
+ {"env6Delay",0,5,0},
+ {"env6Attack",.001f,10,.004f},
+ {"env6Hold",0,5,0},
+ {"env6Decay",.001f,10,.45f},
+ {"env6Sustain",0,1,.7f},
+ {"env6Release",.001f,12,.35f},
+ {"lfo1Shape",0,4,0},
+ {"lfo1Phase",0,1,0},
+ {"lfo1Unipolar",0,1,0},
+ {"lfo2Rate",.01f,40,5.90f},
+ {"lfo2Shape",0,4,0},
+ {"lfo2Phase",0,1,0},
+ {"lfo2Unipolar",0,1,0},
+ {"lfo3Rate",.01f,40,6.80f},
+ {"lfo3Shape",0,4,0},
+ {"lfo3Phase",0,1,0},
+ {"lfo3Unipolar",0,1,0},
+ {"lfo4Rate",.01f,40,7.70f},
+ {"lfo4Shape",0,4,0},
+ {"lfo4Phase",0,1,0},
+ {"lfo4Unipolar",0,1,0},
+ {"lfo5Rate",.01f,40,8.60f},
+ {"lfo5Shape",0,4,0},
+ {"lfo5Phase",0,1,0},
+ {"lfo5Unipolar",0,1,0},
+ {"lfo6Rate",.01f,40,9.50f},
+ {"lfo6Shape",0,4,0},
+ {"lfo6Phase",0,1,0},
+ {"lfo6Unipolar",0,1,0},
+ {"lfo7Rate",.01f,40,10.40f},
+ {"lfo7Shape",0,4,0},
+ {"lfo7Phase",0,1,0},
+ {"lfo7Unipolar",0,1,0},
+ {"lfo8Rate",.01f,40,11.30f},
+ {"lfo8Shape",0,4,0},
+ {"lfo8Phase",0,1,0},
+ {"lfo8Unipolar",0,1,0},
+ {"delayTime",.02f,1.9f,.38f},
+ {"delayFeedback",0,.92f,.35f},
+ {"delayTone",0,1,1},
+ {"reverbFeedback",0,.94f,.76f},
+ {"masterWidth",0,1.5f,1},
+ {"tremRate",.05f,20,3},
+ {"tremDepth",0,1,0},
+ {"tremMode",0,1,0},
+ {"fxRingFreq",20,2000,120},
+ {"fxRingMix",0,1,0}
 }};
 }
 
@@ -42,7 +121,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout SerenityAudioProcessor::crea
   const bool discrete=(i>=serenity::oscAWave&&i<=serenity::polyphony)
     ||i==serenity::filter2Enabled||i==serenity::filterRouting
     ||(i>=serenity::oscAOctave&&i<=serenity::oscDSemi)
-    ||(i>=serenity::oscAWarpMode&&i<=serenity::oscDShapeMode);
+    ||(i>=serenity::oscAWarpMode&&i<=serenity::oscDShapeMode)
+    ||i==serenity::fmMode||i==serenity::ringMode||i==serenity::tremMode
+    ||i==serenity::lfo1Shape||i==serenity::lfo1Unipolar
+    ||i==serenity::lfo2Shape||i==serenity::lfo2Unipolar
+    ||i==serenity::lfo3Shape||i==serenity::lfo3Unipolar
+    ||i==serenity::lfo4Shape||i==serenity::lfo4Unipolar
+    ||i==serenity::lfo5Shape||i==serenity::lfo5Unipolar
+    ||i==serenity::lfo6Shape||i==serenity::lfo6Unipolar
+    ||i==serenity::lfo7Shape||i==serenity::lfo7Unipolar
+    ||i==serenity::lfo8Shape||i==serenity::lfo8Unipolar;
   juce::NormalisableRange<float> r(s.lo,s.hi,discrete?1.0f:0.0001f);
   p.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{s.id,1},juce::String(s.id),r,s.initial));
  }
@@ -139,6 +227,36 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
   p.oscRandPhase[i]=getValue(serenity::oscARandPhase+i);
  }
  p.polyphony=(int)getValue(serenity::polyphony);
+ p.fmBA=getValue(serenity::fmBA);
+ p.fmCA=getValue(serenity::fmCA);
+ p.fmCB=getValue(serenity::fmCB);
+ p.ringAmount=getValue(serenity::ringAmount);
+ p.delayTime=getValue(serenity::delayTime);
+ p.delayFeedback=getValue(serenity::delayFeedback);
+ p.delayTone=getValue(serenity::delayTone);
+ p.reverbFeedback=getValue(serenity::reverbFeedback);
+ p.masterWidth=getValue(serenity::masterWidth);
+ p.tremRate=getValue(serenity::tremRate);
+ p.tremDepth=getValue(serenity::tremDepth);
+ p.fxRingFreq=getValue(serenity::fxRingFreq);
+ p.fxRingMix=getValue(serenity::fxRingMix);
+ p.fmMode=(int)getValue(serenity::fmMode);
+ p.ringMode=(int)getValue(serenity::ringMode);
+ p.tremMode=(int)getValue(serenity::tremMode);
+ p.envDelay=getValue(serenity::env1Delay);p.envHold=getValue(serenity::env1Hold);
+ for(int k=1;k<6;k++){
+  auto& e=p.modEnv[(size_t)k-1];
+  e.delay=getValue(serenity::envParameter(k,0));
+  e.attack=getValue(serenity::envParameter(k,1));
+  e.hold=getValue(serenity::envParameter(k,2));
+  e.decay=getValue(serenity::envParameter(k,3));
+  e.sustain=getValue(serenity::envParameter(k,4));
+  e.release=getValue(serenity::envParameter(k,5));
+ }
+ for(int k=0;k<8;k++){
+  auto& f=p.lfos[(size_t)k];f.rate=getValue(serenity::lfoParameter(k,0));
+  f.shape=(int)getValue(serenity::lfoParameter(k,1));f.phase=getValue(serenity::lfoParameter(k,2));f.unipolar=getValue(serenity::lfoParameter(k,3))>.5f;
+ }
  // 8 macro parameters are host-automatable; map 4 useful defaults into DSP.
  p.cutoff=serenity::clamp(p.cutoff+(getValue(serenity::macroBrightness)-.5f)*.2f,0,1);
  p.lfoDepth=serenity::clamp(p.lfoDepth+(getValue(serenity::macroMovement)-.5f)*.14f,0,1);
@@ -456,6 +574,8 @@ void SerenityAudioProcessor::applyPreset(int index){
   setValue(serenity::oscAPhase+osc,p.oscPhase[osc]);
   setValue(serenity::oscARandPhase+osc,p.oscRandPhase[osc]);
  }
+ // Factory definitions predating v0.10 reset added modules to their neutral defaults.
+ for(int i=serenity::fmBA;i<serenity::parameterCount;i++)setValue(i,serenity::specs[(size_t)i].initial);
  selectedPreset.store(index);
 }
 const juce::String SerenityAudioProcessor::getProgramName(int index){

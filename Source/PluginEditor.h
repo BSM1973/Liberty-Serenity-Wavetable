@@ -26,7 +26,8 @@ private:
  juce::TextEditor search;
  std::unique_ptr<juce::FileChooser> fileChooser;
  int tab=0,category=0,listOffset=0,matrixPage=0,selectedParameter=-1;
- int draggedParameter=-1,selectedOsc=0,activeAB=0;
+ int draggedParameter=-1,selectedOsc=0,activeAB=0,selectedEnv=0,selectedLfo=0;
+ void showChoiceMenu(int parameter,const juce::StringArray& choices);
  std::array<juce::MemoryBlock,2> abStates;
  std::vector<juce::MemoryBlock> undoHistory,redoHistory;
  int sequencePage=0,sequenceDragLane=-1;

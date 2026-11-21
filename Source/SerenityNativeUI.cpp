@@ -21,9 +21,9 @@ struct Painter {
  SerenityAudioProcessor& dsp;
  bool fr;
  int selectedOsc;
- int selectedPage,activeAB;
- Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc,int page,int ab):
-  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc),selectedPage(page),activeAB(ab){}
+ int selectedPage,activeAB,selectedEnv,selectedLfo;
+ Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc,int page,int ab,int env,int lfo):
+  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc),selectedPage(page),activeAB(ab),selectedEnv(env),selectedLfo(lfo){}
  C c(juce::uint32 v){return C(v);}
  juce::String tr(const char* en,const char* french)const{
   return u(fr?french:en);
@@ -102,6 +102,7 @@ struct Painter {
  void knob(float x,float y,float radius,const char* name,int idx=-1,
            juce::uint32 accent=CYAN,float fallback=.5f){
   const float v=val(idx,fallback);
+  if(idx<0){accent=MUTE;}
   g.setColour(c(0xff0b1220u));g.fillEllipse(x-radius-3,y-radius-3,2*radius+6,2*radius+6);
   g.setColour(c(0xff526176u));g.drawEllipse(x-radius-2,y-radius-2,2*radius+4,2*radius+4,1.4f);
   g.setGradientFill(juce::ColourGradient(c(0xff68758au),x-radius*.65f,y-radius,
@@ -118,7 +119,7 @@ struct Painter {
   line(x+std::sin(angle)*(radius-12),y-std::cos(angle)*(radius-12),
        x+std::sin(angle)*(radius-5),y-std::cos(angle)*(radius-5),0xffd9e5efu,2.f);
   tx(name,x-radius-26,y+radius+5,2*radius+52,19,10,MUTE,true,1);
-  tx(idx>=0?value(idx):juce::String(fallback,2),
+  tx(idx>=0?value(idx):juce::String("-"),
      x-radius-27,y+radius+22,2*radius+54,17,10,0xff8899b0u,false,1);
  }
  void miniKnob(float x,float y,const char* name,int idx=-1,float fallback=.5f,
@@ -464,12 +465,12 @@ void Painter::oscillators(){
  miniKnob(790,708,"PHASE",serenity::oscAPhase+selectedOsc,0.f);
  miniKnob(877,708,"RAND PH",serenity::oscARandPhase+selectedOsc,0.f);
  panel(941,638,546,155,"CROSS MODULATION",PURPLE);
- select(960,674,144,"FM TYPE","Phase Mod",PURPLE);
- select(960,737,144,"RING TYPE","Ring",PURPLE);
- miniKnob(1158,709,"B → A",-1,0.f,PURPLE);
- miniKnob(1251,709,"C → A",-1,0.f,PURPLE);
- miniKnob(1340,709,"C → B",-1,0.f,PURPLE);
- miniKnob(1431,709,"RING",-1,0.f,PURPLE);
+ select(960,674,144,"FM TYPE",dsp.getValue(serenity::fmMode)>.5f?"Frequency Mod":"Phase Mod",PURPLE);
+ select(960,737,144,"RING TYPE",dsp.getValue(serenity::ringMode)>.5f?"AM":"Ring",PURPLE);
+ miniKnob(1158,709,"B > A",serenity::fmBA,0.f,PURPLE);
+ miniKnob(1251,709,"C > A",serenity::fmCA,0.f,PURPLE);
+ miniKnob(1340,709,"C > B",serenity::fmCB,0.f,PURPLE);
+ miniKnob(1431,709,"RING",serenity::ringAmount,0.f,PURPLE);
  sources();
 }
 
@@ -592,53 +593,50 @@ void Painter::filters(){
 
 void Painter::modulation(){
  panel(11,118,732,600,"ENVELOPES");
- tx("ENV 1 · AMPLITUDE",581,123,143,20,11,MUTE,true);
- for(int i=0;i<6;i++)tab(22.f+i*117.f,156,110,32,
-     ("ENV "+juce::String(i+1)).toRawUTF8(),i==0,GOLD);
+ tx("ENV "+juce::String(selectedEnv+1)+(selectedEnv==0?" / AMP":" / MOD"),555,123,170,20,11,MUTE,true,2);
+ for(int i=0;i<6;i++)tab(22.f+i*117.f,156,110,32,("ENV "+juce::String(i+1)).toRawUTF8(),i==selectedEnv,GOLD);
  grid(23,208,708,339,8,5);
- const float att=val(serenity::attack),dec=val(serenity::decay),
-  sus=val(serenity::sustain),rel=val(serenity::release);
- const float peakX=45.f+att*148.f+30.f,sustainX=peakX+dec*180.f+47.f;
- juce::Path envelope;
- envelope.startNewSubPath(43,506);envelope.lineTo(peakX,240);
- envelope.cubicTo(peakX+42,260,sustainX-35,320,sustainX,506-(sus*258));
- envelope.lineTo(343,506-sus*258);
- envelope.cubicTo(388,506-sus*258,444,456,480+rel*200,506);
+ float t[6];for(int k=0;k<6;k++)t[k]=dsp.getValue(serenity::envParameter(selectedEnv,k));
+ const float total=std::max(.01f,t[0]+t[1]+t[2]+t[3]+t[5]+.5f);
+ float x=43.f;const float scale=648.f/total,base=506.f,peak=240.f,sy=base-(base-peak)*t[4];
+ juce::Path envelope;envelope.startNewSubPath(x,base);x+=t[0]*scale;envelope.lineTo(x,base);
+ x+=t[1]*scale;envelope.lineTo(x,peak);x+=t[2]*scale;envelope.lineTo(x,peak);
+ x+=t[3]*scale;envelope.lineTo(x,sy);x+=.5f*scale;envelope.lineTo(x,sy);x+=t[5]*scale;envelope.lineTo(x,base);
  g.setColour(c(CYAN));g.strokePath(envelope,juce::PathStrokeType(3.f));
- tx("NOTE ON",43,213,120,18,11,MUTE);
- tx("NOTE OFF",314,213,150,18,11,MUTE);
+ tx("NOTE ON",43,213,120,18,11,MUTE);tx("DAHDSR",580,213,130,18,11,MUTE,true,2);
  const float envKnobs[]={60,151,240,332,421,513,603,693};
  const char* envLabels[]={"DELAY","ATTACK","HOLD","DECAY","SUSTAIN","RELEASE","CURVE","VEL SENS"};
- const int envParams[]={-1,serenity::attack,-1,serenity::decay,serenity::sustain,
-                        serenity::release,-1,-1};
- for(int i=0;i<8;i++)miniKnob(envKnobs[i],582,envLabels[i],envParams[i],i>5?.35f:.5f,
-                               i>5?PURPLE:CYAN);
+ for(int i=0;i<8;i++)miniKnob(envKnobs[i],582,envLabels[i],i<6?serenity::envParameter(selectedEnv,i):-1,0.f,i>5?PURPLE:CYAN);
  button(23,663,97,25,"LOOP");
  tx("ROUTED TO",129,663,87,23,11,MUTE,true);
- button(217,661,151,28,"Amplitude · always",true,PURPLE);
+ button(217,661,196,28,selectedEnv==0?"Amplitude":"Matrix",true,PURPLE);
  panel(755,118,732,600,"LFOS",PURPLE);
- tx("LFO 1 · FREE ASSIGN",1292,123,166,22,11,MUTE,true);
- for(int i=0;i<8;i++)tab(766+i*88.f,156,81,32,
-    ("LFO "+juce::String(i+1)).toRawUTF8(),i==0,GOLD);
- waveform(767,208,708,317,0,0,PURPLE,.96f,2.f);
- tx("SINE",787,213,135,21,11,PURPLE,true);
- tx(juce::String(dsp.getValue(serenity::lfoRate),2)+" Hz",
-    1378,213,73,19,12,MUTE,true,2);
- select(767,546,175,"SHAPE","Sine",PURPLE);
+ tx("LFO "+juce::String(selectedLfo+1),1292,123,166,22,11,MUTE,true,2);
+ for(int i=0;i<8;i++)tab(766+i*88.f,156,81,32,("LFO "+juce::String(i+1)).toRawUTF8(),i==selectedLfo,GOLD);
+ grid(767,208,708,317,8,4);
+ const int shape=(int)dsp.getValue(serenity::lfoParameter(selectedLfo,1));
+ const float phase=dsp.getValue(serenity::lfoParameter(selectedLfo,2));
+ const bool uni=dsp.getValue(serenity::lfoParameter(selectedLfo,3))>.5f;
+ juce::Path wave;
+ for(int i=0;i<=512;i++){float x=777.f+688.f*i/512.f;float v=serenity::lfoWave((float)i/512.f+phase,shape);
+  float y=uni?506.f-(v+1.f)*125.f:366.f-v*125.f;if(i==0)wave.startNewSubPath(x,y);else wave.lineTo(x,y);}
+ g.setColour(c(PURPLE));g.strokePath(wave,juce::PathStrokeType(2.f));
+ const char* shapes[]={"Sine","Triangle","Saw Up","Square","Saw Down"};
+ tx(shapes[juce::jlimit(0,4,shape)],787,213,135,21,11,PURPLE,true);
+ tx(juce::String(dsp.getValue(serenity::lfoParameter(selectedLfo,0)),2)+" Hz",1378,213,73,19,12,MUTE,true,2);
+ select(767,546,175,"SHAPE",shapes[juce::jlimit(0,4,shape)],PURPLE);
  select(953,546,137,"MODE","Free",PURPLE);
- select(1103,546,145,"DIVISION","8th",PURPLE);
- button(1275,570,76,26,"SYNC");
- button(1364,570,110,26,"UNIPOLAR");
- miniKnob(803,639,"RATE",serenity::lfoRate,.50f,PURPLE);
- miniKnob(893,639,"PHASE",-1,.00f,PURPLE);
- miniKnob(985,639,"FADE IN",-1,.00f,PURPLE);
- miniKnob(1074,639,"SMOOTH",-1,.00f,PURPLE);
- tx("ROUTED TO · DRAG A SOURCE TO A KNOB",1127,621,333,29,11,MUTE);
+ select(1103,546,145,"DIVISION","-",PURPLE);
+ button(1275,570,76,26,"SYNC");button(1364,570,110,26,"UNIPOLAR",uni,PURPLE);
+ miniKnob(803,639,"RATE",serenity::lfoParameter(selectedLfo,0),.5f,PURPLE);
+ miniKnob(893,639,"PHASE",serenity::lfoParameter(selectedLfo,2),0.f,PURPLE);
+ miniKnob(985,639,"DEPTH",selectedLfo==0?serenity::lfoDepth:-1,0.f,PURPLE);
+ miniKnob(1074,639,"SMOOTH",-1,0.f,PURPLE);
+ tx("ROUTED TO / MATRIX",1127,621,333,29,11,MUTE);
  rr(11,728,1476,64,7,0xff121b2au);outline(11,728,1476,64,7,STROKE);
- tx("ROUTES",27,744,96,21,13,TYPE,true);
- tx("0 / 64 slots",27,766,126,19,11,MUTE);
- tx("Drag a source from the rail below onto any knob, or configure the Matrix.",
-    158,742,955,27,12,MUTE);
+ int routes=0;for(int i=0;i<64;i++){auto r=dsp.getRoute(i);if(r.source>=0&&r.destination>=0&&r.amount!=0)routes++;}
+ tx("ROUTES",27,744,96,21,13,TYPE,true);tx(juce::String(routes)+" / 64",27,766,126,19,11,MUTE);
+ tx(fr?"Configurez les routages dans la matrice.":"Configure routing in the Matrix page.",158,742,955,27,12,MUTE);
  sources();
 }
 void Painter::effects(){
@@ -678,8 +676,8 @@ void Painter::effects(){
  panel(901,391,316,219,"DELAY");
  panel(1226,391,261,219,"MASTER",PURPLE);
  waveform(23,425,264,55,0,0,PURPLE,.48f);
- tab(323,427,91,31,"Tremolo",true,PURPLE);
- tab(416,427,91,31,"Autopan",false,PURPLE);
+ tab(323,427,91,31,"Tremolo",dsp.getValue(serenity::tremMode)<.5f,PURPLE);
+ tab(416,427,91,31,"Autopan",dsp.getValue(serenity::tremMode)>.5f,PURPLE);
  waveform(515,427,193,70,0,.02f,CYAN);
  waveform(743,429,136,61,4,0,PURPLE);
  waveform(912,423,292,65,6,0,CYAN);
@@ -690,23 +688,23 @@ void Painter::effects(){
  select(1060,488,144,"SYNC","Off");
  for(int i=0;i<4;i++)miniKnob(58+i*66.f,548,
   i==0?"RATE":i==1?"DEPTH":i==2?"FEEDBACK":"MIX",-1,.5f,PURPLE);
- miniKnob(585,547,"RATE",-1,.5f,PURPLE);
- miniKnob(651,547,"DEPTH",-1,.5f,PURPLE);
- miniKnob(773,546,"FREQ",-1,.5f,PURPLE);
- miniKnob(841,546,"MIX",-1,.5f,PURPLE);
- miniKnob(955,546,"TIME",-1,.5f);
- miniKnob(1021,546,"FEEDBACK",-1,.5f);
- miniKnob(1086,546,"TONE",-1,.7f);
+ miniKnob(585,547,"RATE",serenity::tremRate,.5f,PURPLE);
+ miniKnob(651,547,"DEPTH",serenity::tremDepth,0.f,PURPLE);
+ miniKnob(773,546,"FREQ",serenity::fxRingFreq,.5f,PURPLE);
+ miniKnob(841,546,"MIX",serenity::fxRingMix,0.f,PURPLE);
+ miniKnob(955,546,"TIME",serenity::delayTime,.5f);
+ miniKnob(1021,546,"FEEDBACK",serenity::delayFeedback,.5f);
+ miniKnob(1086,546,"TONE",serenity::delayTone,.7f);
  miniKnob(1153,546,"MIX",serenity::delayMix);
  miniKnob(1315,547,"VOLUME",serenity::master,.8f,PURPLE);
- miniKnob(1398,547,"WIDTH",-1,1.f,PURPLE);
+ miniKnob(1398,547,"WIDTH",serenity::masterWidth,1.f,PURPLE);
  panel(11,620,457,221,"REVERB");
  panel(478,620,239,221,"FX LFOS",PURPLE);
  panel(726,620,761,221,"FX MODULATION MATRIX",PURPLE);
  waveform(25,660,428,51,4,0,CYAN,.40f);
  select(25,718,162,"TYPE","Hall");
- const char* reverbs[]={"DECAY","DAMPING","SIZE","PRE DLY","LOW CUT","WIDTH","MIX"};
- for(int i=0;i<7;i++)miniKnob(51+i*63.f,779,reverbs[i],i==6?serenity::reverbMix:-1,.54f);
+ const char* reverbs[]={"FEEDBACK","DAMPING","SIZE","PRE DLY","LOW CUT","WIDTH","MIX"};
+ for(int i=0;i<7;i++)miniKnob(51+i*63.f,779,reverbs[i],i==6?serenity::reverbMix:i==0?serenity::reverbFeedback:-1,.54f);
  waveform(549,686,156,47,0,0,PURPLE);
  waveform(549,762,156,47,1,0,PURPLE);
  miniKnob(517,686,"LFO 1",-1,.3f,PURPLE);
@@ -976,7 +974,7 @@ void Painter::settings(){
 void SerenityEditor::paintNativePage(juce::Graphics& g){
  juce::Graphics::ScopedSaveState saved(g);
  g.addTransform(juce::AffineTransform::scale((float)getWidth()/1492.f,(float)getHeight()/991.f));
- Painter p(g,synth,selectedOsc,tab,activeAB);
+ Painter p(g,synth,selectedOsc,tab,activeAB,selectedEnv,selectedLfo);
  g.fillAll(juce::Colour(BG));
  p.header();
  switch(tab){

@@ -43,6 +43,30 @@ int main() {
  assert(difference(original,render(p))>.01);
  p.oscBlend[0]=0.f;
  assert(difference(original,render(p))<.0001);
- std::cout<<"PASS: true oscillator BLEND / PHASE / RAND PH DSP controls\n";
+ // Cross-modulation is tested on two independently enabled oscillators.
+ p.oscLevel[1]=.5f;p.oscSemi[1]=7.f;
+ const auto twoOsc=render(p);
+ p.fmBA=.85f;assert(difference(twoOsc,render(p))>1.0);
+ p.fmMode=1;assert(difference(twoOsc,render(p))>1.0);
+ p.fmBA=0;p.fmMode=0;p.ringAmount=.85f;assert(difference(twoOsc,render(p))>1.0);
+ p.ringAmount=0;p.tremDepth=1;assert(difference(twoOsc,render(p))>1.0);
+ p.tremDepth=0;p.fxRingMix=1;assert(difference(twoOsc,render(p))>1.0);
+ p.fxRingMix=0;p.envDelay=.08f;
+ const auto delayed=render(p);for(float v:delayed)assert(std::abs(v)<.00001f);
+ p.envDelay=0;
+ Envelope envelope;EnvelopeSettings cfg;cfg.delay=.01f;cfg.attack=.001f;cfg.hold=.02f;
+ envelope.on();
+ for(int i=0;i<400;i++)assert(envelope.next(cfg,48000.f)==0.f);
+ for(int i=0;i<150;i++)envelope.next(cfg,48000.f);
+ for(int i=0;i<500;i++)assert(envelope.next(cfg,48000.f)>.999f);
+ for(int shape=0;shape<=4;shape++)for(int i=0;i<1000;i++){auto v=lfoWave(i*.01f,shape);assert(std::isfinite(v)&&std::abs(v)<=1.001f);}
+ assert(lfoWave(.125f,0)!=lfoWave(.125f,3));
+ e.route(0)={7,1,.75f};
+ p.lfos[1].shape=0;
+ const auto sineMod=render(p);
+ p.lfos[1].shape=3;
+ assert(difference(sineMod,render(p))>.01);
+ e.route(0)={};
+ std::cout<<"PASS: oscillator phase, FM, ring, DAHDSR, LFO shapes and effect processing\n";
  return 0;
 }
