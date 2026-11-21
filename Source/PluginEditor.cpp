@@ -162,22 +162,6 @@ void SerenityEditor::paintOscillators(juce::Graphics& g){
        enabled?aqua:muted,11,true);
  }
 }
-void SerenityEditor::paintEditor(juce::Graphics& g){
- if(tab!=1)return;
- for(int i=0;i<4;i++){
-  float x=24+i*104.f;
-  g.setColour(selectedOsc==i?gold:juce::Colour(0xff111825));
-  g.drawRoundedRectangle(scaleRect(x,157,90,33),5.f,selectedOsc==i?2.f:1.f);
- }
- const int waves[]={serenity::oscAWave,serenity::oscBWave,serenity::oscCWave,serenity::oscDWave};
- int wave=(int)synth.getValue(waves[selectedOsc]);
- int col=wave%4,row=wave/4;
- g.setColour(gold);
- if(wave<serenity::waveCount)
-  g.drawRoundedRectangle(scaleRect(24+col*103.5f,205+row*94.9f,96,80),4.f,2.f);
- paintCustomWaveform(g);
-}
-
 void SerenityEditor::paintMatrix(juce::Graphics& g){
  if(tab!=7)return;
  const char* sourceNames[]={"ENV 1","ENV 2","ENV 3","ENV 4","ENV 5","ENV 6",
@@ -252,7 +236,7 @@ void SerenityEditor::paintInteraction(juce::Graphics& g){
 }
 void SerenityEditor::paint(juce::Graphics& g){
  paintNativePage(g);
- if(tab==1)paintEditor(g);
+ // One native 3D/2D renderer only; no legacy Custom overlay on top.
  if(tab==8)paintPresets(g);
  paintInteraction(g);
 }
@@ -922,66 +906,6 @@ void SerenityEditor::drawCustomPoint(juce::Point<float> p){
  repaint();
 }
 
-void SerenityEditor::paintCustomWaveform(juce::Graphics& g){
- const int waves[]={serenity::oscAWave,serenity::oscBWave,serenity::oscCWave,serenity::oscDWave};
- if((int)std::lround(synth.getValue(waves[selectedOsc]))!=serenity::waveCount)return;
- const auto background=juce::Colour(0xff0b121d);
- const auto waveform=juce::Colour(0xff74deec);
- // Draw the editable 3D preview within the original central graph, not over labels/knobs.
- g.setColour(background);g.fillRoundedRectangle(scaleRect(485,201,646,365),5.f);
- for(int frame=7;frame>=0;frame--){
-  juce::Path path;
-  const float left=505.f+frame*7.0f;
-  const float right=1102.f+frame*1.8f;
-  const float baseline=485.f-frame*31.f;
-  for(int i=0;i<=192;i++){
-   const int sample=juce::jlimit(0,511,(int)std::lround((float)i/192.f*511.f));
-   const float x=left+(right-left)*(float)i/192.f;
-   const float y=baseline-synth.getCustomPoint(selectedOsc,frame,sample)*48.f;
-   auto rect=scaleRect(x,y,0,0);
-   if(i==0)path.startNewSubPath(rect.getX(),rect.getY());
-   else path.lineTo(rect.getX(),rect.getY());
-  }
-  g.setColour(frame==selectedCustomFrame?juce::Colour(0xffe0c278):
-               waveform.withAlpha(.30f+.06f*(float)(8-frame)));
-  g.strokePath(path,juce::PathStrokeType(frame==selectedCustomFrame?2.2f:1.4f));
- }
- // Repaint the numeric POSITION readout above the dynamic curves:
- // do not obscure or clip the text from the original image.
- g.setColour(background);
- g.fillRoundedRectangle(scaleRect(472,163,178,97),4.f);
- const float p=juce::jlimit(0.f,1.f,synth.getValue(serenity::position));
- drawText(g,"POSITION",479,169,157,20,juce::Colour(0xffa6b6c9),12,true);
- drawText(g,juce::String(p,2),478,189,165,37,juce::Colour(0xffe4edf5),30,true);
- drawText(g,tr("IMAGE ","FRAME ")+juce::String(1.f+7.f*p,1)+" / 8",
-          479,231,158,23,juce::Colour(0xff94a7bd),12);
- // Eight original frame buttons stay in exactly the same position.
- g.setColour(gold);
- g.drawRoundedRectangle(scaleRect(463+selectedCustomFrame*84.f,599,79,66),5.f,2.f);
- // Paint only INSIDE the existing OUTPUT WAVEFORM graph.
- g.setColour(background);
- g.fillRoundedRectangle(scaleRect(1169,463,299,142),3.f);
- for(int q=0;q<5;q++){
-  const float y=466.f+q*34.f;
-  auto a=scaleRect(1170,y,0,0);
-  g.setColour(juce::Colour(0xff263447));
-  g.drawHorizontalLine((int)std::lround(a.getY()),scaleRect(1172,0,0,0).getX(),
-                       scaleRect(1465,0,0,0).getX());
- }
- juce::Path wave;
- for(int i=0;i<serenity::editableSamples;i++){
-  const float x=1171.f+296.f*(float)i/(serenity::editableSamples-1);
-  const float y=538.f-66.f*synth.getCustomPoint(selectedOsc,selectedCustomFrame,i);
-  auto q=scaleRect(x,y,0,0);
-  if(i==0)wave.startNewSubPath(q.getX(),q.getY());
-  else wave.lineTo(q.getX(),q.getY());
- }
- g.setColour(waveform);
- g.strokePath(wave,juce::PathStrokeType(2.0f));
- drawText(g,tr("TABLE PERSONNALISÉE","CUSTOM TABLE"),1191,443,228,19,gold,11,true);
- paintCustomHarmonics(g);
-}
-
 void SerenityEditor::importWavetableAudio(){
  fileChooser=std::make_unique<juce::FileChooser>(
   tr("Importer un fichier WAV dans la table","Import WAV into wavetable"),
@@ -1135,37 +1059,4 @@ void SerenityEditor::drawCustomHarmonic(juce::Point<float> p){
  synth.setCustomHarmonic(selectedOsc,selectedCustomFrame,harmonic,target);
  customEditorTouched=true;
  repaint();
-}
-void SerenityEditor::paintCustomHarmonics(juce::Graphics& g){
- constexpr int count=serenity::spectral::displayedHarmonics;
- // Geometry follows the user's exact HARMONICS graph: preserve all axis labels.
- constexpr float left=1202.f,right=1466.f,top=165.f,bottom=355.f;
- const float width=(right-left)/count;
- const auto spectrum=synth.getCustomHarmonics(selectedOsc,selectedCustomFrame);
- float strongest=0.f;
- for(auto x:spectrum)strongest=std::max(strongest,x);
- const auto background=juce::Colour(0xff0b121d);
- const auto grid=juce::Colour(0xff243144);
- const auto cyan=juce::Colour(0xff71d8e7);
- g.setColour(background);
- g.fillRect(scaleRect(left-1.f,top-1.f,right-left+2.f,bottom-top+2.f));
- for(int k=0;k<4;k++){
-  const float y=bottom-(bottom-top)*(float)k/3.f;
-  auto bounds=scaleRect(left,y,right-left,0);
-  g.setColour(grid);
-  g.drawHorizontalLine((int)std::round(bounds.getY()),bounds.getX(),bounds.getRight());
- }
- for(int i=0;i<count;i++){
-  const float amplitude=std::max(0.f,spectrum[(size_t)i]);
-  const float relativeDb=strongest>0.000001f&&amplitude>0.000001f
-   ?20.f*std::log10(amplitude/strongest):-60.f;
-  const float fraction=juce::jlimit(0.f,1.f,(relativeDb+60.f)/60.f);
-  const float height=(bottom-top-5.f)*fraction;
-  const float x=left+i*width+width*.18f;
-  const float y=bottom-std::max(1.0f,height);
-  g.setColour(i+1==selectedHarmonic?gold:cyan);
-  g.fillRoundedRectangle(scaleRect(x,y,width*.64f,std::max(1.0f,height)),1.2f);
- }
- // The original skin supplies the 0/-20/-40 dB axis, 1/8/16/24/32
- // harmonics marks and caption. Do not paint over or duplicate those labels.
 }
