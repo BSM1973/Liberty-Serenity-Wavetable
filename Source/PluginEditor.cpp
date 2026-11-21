@@ -28,12 +28,14 @@ SerenityEditor::SerenityEditor(SerenityAudioProcessor& p):juce::AudioProcessorEd
  setResizable(false,false);
  const auto *display=juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
  const auto usable=display!=nullptr ? display->userArea : juce::Rectangle<int>(0,0,1440,900);
- const int availableW=std::max(900,usable.getWidth()-42);
- const int availableH=std::max(610,usable.getHeight()-58);
- const int fittedW=juce::jmin(1380,availableW,(int)std::floor(availableH*canvasWidth/canvasHeight));
- const int fittedH=(int)std::round(fittedW*canvasHeight/canvasWidth);
- setSize(fittedW,fittedH);
- startTimerHz(20);
+ const auto fitted=fitEditorSize(usable.getWidth(),usable.getHeight());
+ setSize(fitted.x,fitted.y);
+ startTimerHz(30);
+}
+juce::Point<int> SerenityEditor::fitEditorSize(int usableWidth,int usableHeight) noexcept {
+ const int availableW=std::max(1,usableWidth-42),availableH=std::max(1,usableHeight-58);
+ const int fittedW=std::max(1,juce::jmin(1380,availableW,(int)std::floor(availableH*canvasWidth/canvasHeight)));
+ return {fittedW,std::max(1,(int)std::floor(fittedW*canvasHeight/canvasWidth))};
 }
 void SerenityEditor::selectTabForSmokeTest(int index){
  tab=juce::jlimit(0,9,index);
@@ -43,6 +45,7 @@ void SerenityEditor::selectTabForSmokeTest(int index){
 void SerenityEditor::resized(){
  search.setVisible(tab==8);
  search.setBounds(scaleRect(283,157,673,37).toNearestInt());
+ search.setFont(juce::Font(juce::jmax(10.f,15.f*getWidth()/canvasWidth)));
 }
 juce::Point<float> SerenityEditor::logical(juce::Point<float> p) const {
  return {p.x*canvasWidth/getWidth(),p.y*canvasHeight/getHeight()};
@@ -103,7 +106,8 @@ void SerenityEditor::paintPresets(juce::Graphics& g){
   if(pi==synth.currentPreset()){
    g.setColour(juce::Colour(0xff273e4c));g.fillRoundedRectangle(scaleRect(x-7,y,317,29),3.f);
   }
-  drawText(g,juce::String::fromUTF8(synth.isFavorite(pi)?"★":"☆"),x,y,17,26,gold,15);
+  juce::Path star;const auto center=scaleRect(x,y,17,26).getCentre();const float outer=7.f*getWidth()/canvasWidth;
+  for(int j=0;j<10;j++){const float a=-juce::MathConstants<float>::halfPi+j*juce::MathConstants<float>::pi*.2f,r=outer*(j%2==0?1.f:.44f);const float sx=center.x+std::cos(a)*r,sy=center.y+std::sin(a)*r;if(j==0)star.startNewSubPath(sx,sy);else star.lineTo(sx,sy);}star.closeSubPath();g.setColour(gold);if(synth.isFavorite(pi))g.fillPath(star);else g.strokePath(star,juce::PathStrokeType(1.f));
   drawText(g,juce::String(preset.name),x+24,y,207,26,
    pi==synth.currentPreset()?aqua:juce::Colour(0xffd3d9e3),12.9f,true);
   drawText(g,juce::String(preset.category).toUpperCase(),x+227,y,83,26,muted,10.5f,true);
@@ -220,10 +224,11 @@ void SerenityEditor::showRouteMenu(int slot,bool source){
 }
 
 void SerenityEditor::paintInteraction(juce::Graphics& g){
- if(selectedParameter>=0&&selectedParameter<serenity::parameterCount){
+ const int highlight=draggedParameter>=0?draggedParameter:hoverParameter;
+ if(highlight>=0&&highlight<serenity::parameterCount){
   auto hs=hotspots();
-  for(const auto &spot:hs)if(spot.parameter==selectedParameter){
-   g.setColour(violet.withAlpha(.90f));
+  for(const auto &spot:hs)if(spot.parameter==highlight){
+   g.setColour(violet.withAlpha(draggedParameter>=0?.90f:.52f));
    auto center=scaleRect(spot.x-spot.r,spot.y-spot.r,spot.r*2,spot.r*2);
    g.drawEllipse(center,2.f);
   }
@@ -463,7 +468,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
  downPos=p;
  if(p.y>=63&&p.y<105){
   for(int i=0;i<10;i++)if(p.x>=tabStops[(size_t)i]&&p.x<tabStops[(size_t)i+1]){
-   tab=i;resized();repaint();return;
+   tab=i;hoverParameter=-1;resized();repaint();return;
   }
  }
  if(p.x>=1023&&p.x<1053&&p.y>=8&&p.y<52){changeLanguage();return;}
@@ -613,6 +618,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
     float localX=p.x-col*744;
     if(localX>=72&&localX<=256){showRouteMenu(slot,true);return;}
     if(localX>=280&&localX<=465){showRouteMenu(slot,false);return;}
+    if(localX>=698&&localX<=724){rememberUndo();synth.setRoute(slot,{});repaint();return;}
     if(localX>=473&&localX<=620){
      auto r=synth.getRoute(slot);
      r.amount=juce::jlimit(-1.f,1.f,(localX-474.f)/146.f*2.f-1.f);
@@ -685,8 +691,9 @@ void SerenityEditor::mouseDoubleClick(const juce::MouseEvent& e){
 }
 void SerenityEditor::mouseMove(const juce::MouseEvent& e){
  int i=paramAt(logical(e.position));
- if(i>=0 && i!=selectedParameter){selectedParameter=i;repaint();}
+ if(i!=hoverParameter){hoverParameter=i;repaint();}
 }
+void SerenityEditor::mouseExit(const juce::MouseEvent&){if(hoverParameter>=0){hoverParameter=-1;repaint();}}
 void SerenityEditor::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& wheel){
  auto p=logical(e.position);
  if(tab==8&&p.x>280&&p.y>200&&p.y<790){
@@ -698,8 +705,13 @@ void SerenityEditor::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseW
  if(index>=0){const auto& s=serenity::specs[(size_t)index];
   synth.setValue(index,juce::jlimit(s.lo,s.hi,synth.getValue(index)+wheel.deltaY*(s.hi-s.lo)*.04f));repaint();}
 }
+juce::Rectangle<int> SerenityEditor::footerRepaintBounds()const{return scaleRect(875,858,617,133).getSmallestIntegerContainer();}
 void SerenityEditor::timerCallback(){
- if(statusCountdown>0)statusCountdown--;
+ const bool hadStatus=statusCountdown>0;if(hadStatus)statusCountdown--;
+ auto follow=[](float prev,float input){return input>prev?input:std::max(input,prev*.88f-.0002f);};
+ meterLeft=follow(meterLeft,synth.getChannelPeak(0));meterRight=follow(meterRight,synth.getChannelPeak(1));
+ // Full repaint remains necessary for host parameter automation. JUCE clips the
+ // dynamic plots to their reserved regions and does not create child windows.
  repaint();
 }
 

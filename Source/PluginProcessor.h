@@ -267,6 +267,8 @@ public:
  void setFrench(bool enabled) noexcept {frenchUI.store(enabled);}
  int getVoiceCount() const noexcept {return voiceCount.load();}
  float getOutputLevel() const noexcept {return outputMeter.load();}
+ float getChannelPeak(int channel)const noexcept{return channel==0?outputPeakLeft.load(std::memory_order_relaxed):outputPeakRight.load(std::memory_order_relaxed);}
+ float getHostTempo()const noexcept{return hostTempoDisplay.load(std::memory_order_relaxed);}
  float getOutputScopeSample(int index) const noexcept {
   return index>=0&&index<256?outputScope[(size_t)index].load(std::memory_order_relaxed):0.f;
  }
@@ -303,7 +305,7 @@ private:
  std::array<std::atomic<int>,serenity::parameterCount> controller{};
  std::array<std::atomic<float>,serenity::parameterCount> midiOverride{};
  std::atomic<int> learnTarget{-1},lastCC{-1},selectedPreset{0},voiceCount{0};
- std::atomic<float> outputMeter{0.f};
+ std::atomic<float> outputMeter{0.f},outputPeakLeft{0.f},outputPeakRight{0.f},hostTempoDisplay{120.f};
  // Last rendered mono audio window, atomically published without allocation.
  std::array<std::atomic<float>,256> outputScope{};
  std::atomic<bool> frenchUI{true};

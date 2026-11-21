@@ -13,6 +13,8 @@ public:
  void resized() override;
  // Native vector pages are rendered by JUCE; no screenshot background is loaded.
  void selectTabForSmokeTest(int index);
+ static juce::Point<int> fitEditorSize(int usableWidth,int usableHeight) noexcept;
+ void mouseExit(const juce::MouseEvent&) override;
  void mouseDown(const juce::MouseEvent&) override;
  void mouseDrag(const juce::MouseEvent&) override;
  void mouseUp(const juce::MouseEvent&) override;
@@ -40,6 +42,9 @@ private:
  juce::Point<float> downPos;
  juce::String status;
  int statusCountdown=0;
+ float meterLeft=0.f,meterRight=0.f;
+ int hoverParameter=-1;
+ juce::Rectangle<int> footerRepaintBounds()const;
  std::vector<Hotspot> hotspots() const;
  int paramAt(juce::Point<float>)const;
  juce::Point<float> logical(juce::Point<float>) const;

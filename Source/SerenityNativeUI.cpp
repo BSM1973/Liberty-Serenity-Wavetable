@@ -10,7 +10,7 @@ namespace {
 using C=juce::Colour;
 constexpr auto BG=0xff080d16u, PANEL=0xff1e293bu, PANE2=0xff263246u,
  STROKE=0xff36465au, DARK=0xff0b121du, TYPE=0xffd7dfecu,
- MUTE=0xff8d9bb0u, CYAN=0xff72dce9u, PURPLE=0xffac89f4u,
+ MUTE=0xffa4b1c4u, CYAN=0xff72dce9u, PURPLE=0xffac89f4u,
  GOLD=0xffd8b667u, SOFT=0xff162132u;
 constexpr float pi=3.14159265358979323846f;
 juce::String u(const char* s){return juce::String::fromUTF8(s);}
@@ -21,9 +21,10 @@ struct Painter {
  SerenityAudioProcessor& dsp;
  bool fr;
  int selectedOsc;
- int selectedPage,activeAB,selectedEnv,selectedLfo;
- Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc,int page,int ab,int env,int lfo):
-  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc),selectedPage(page),activeAB(ab),selectedEnv(env),selectedLfo(lfo){}
+ int selectedPage,activeAB,selectedEnv,selectedLfo,matrixPage,sequencePage;
+ float meterLeft,meterRight;
+ Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc,int page,int ab,int env,int lfo,int matrix,int seq,float ml,float mr):
+  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc),selectedPage(page),activeAB(ab),selectedEnv(env),selectedLfo(lfo),matrixPage(matrix),sequencePage(seq),meterLeft(ml),meterRight(mr){}
  C c(juce::uint32 v){return C(v);}
  juce::String tr(const char* en,const char* french)const{
   return u(fr?french:en);
@@ -43,12 +44,17 @@ struct Painter {
  }
  void tx(const juce::String& str,float x,float y,float w,float h,int points=12,
          juce::uint32 colour=TYPE,bool bold=false,int justification=0){
+  if(w<=0||h<=0)return;
+  juce::Graphics::ScopedSaveState clipped(g);
+  const auto bounds=juce::Rectangle<int>((int)x,(int)y,(int)w,(int)h).getIntersection({0,0,1492,991});
+  if(bounds.isEmpty())return;
+  g.reduceClipRegion(bounds);
   g.setColour(c(colour));
-  g.setFont(juce::Font((float)points,bold?juce::Font::bold:juce::Font::plain));
-  g.drawFittedText(str,juce::Rectangle<int>((int)x,(int)y,(int)w,(int)h),
+  g.setFont(juce::Font(juce::jmin((float)points+1.f,h*.84f),bold?juce::Font::bold:juce::Font::plain));
+  g.drawFittedText(str,bounds,
     justification==1?juce::Justification::centred:
     justification==2?juce::Justification::centredRight:
-    juce::Justification::centredLeft,1);
+    juce::Justification::centredLeft,1,.78f);
  }
  void tx(const char* str,float x,float y,float w,float h,int pts=12,
          juce::uint32 col=TYPE,bool bold=false,int j=0){
@@ -57,8 +63,9 @@ struct Painter {
  void panel(float x,float y,float w,float h,const char* title,
             juce::uint32 accent=CYAN){
   // Brushed titanium/graphite; subtle directional sheen within the exact panel.
-  g.setGradientFill(juce::ColourGradient(c(0xff2b374bu),x,y,
-                                         c(0xff1a2536u),x+w*.7f,y+h,false));
+  auto metal=juce::ColourGradient(c(0xff354152u),x,y,c(0xff172231u),x+w*.7f,y+h,false);
+  metal.addColour(.35,c(0xff283548u));metal.addColour(.72,c(0xff233043u));
+  g.setGradientFill(metal);
   g.fillRoundedRectangle(x,y,w,h,8.f);
   {
    juce::Graphics::ScopedSaveState clipped(g);
@@ -105,8 +112,8 @@ struct Painter {
   if(idx<0){accent=MUTE;}
   g.setColour(c(0xff0b1220u));g.fillEllipse(x-radius-3,y-radius-3,2*radius+6,2*radius+6);
   g.setColour(c(0xff526176u));g.drawEllipse(x-radius-2,y-radius-2,2*radius+4,2*radius+4,1.4f);
-  g.setGradientFill(juce::ColourGradient(c(0xff68758au),x-radius*.65f,y-radius,
-                                          c(0xff121a2bu),x+radius*.6f,y+radius,true));
+  auto alloy=juce::ColourGradient(c(0xff8794a7u),x-radius*.64f,y-radius*.75f,c(0xff111a29u),x+radius*.65f,y+radius,true);
+  alloy.addColour(.42,c(0xff48576bu));alloy.addColour(.72,c(0xff253145u));g.setGradientFill(alloy);
   g.fillEllipse(x-radius,y-radius,radius*2,radius*2);
   g.setColour(c(0xff93a3b8u).withAlpha(.28f));
   g.drawEllipse(x-radius+2,y-radius+2,2*radius-4,2*radius-4,1.f);
@@ -118,9 +125,10 @@ struct Painter {
   const float angle=start+(end-start)*v;
   line(x+std::sin(angle)*(radius-12),y-std::cos(angle)*(radius-12),
        x+std::sin(angle)*(radius-5),y-std::cos(angle)*(radius-5),0xffd9e5efu,2.f);
-  tx(name,x-radius-26,y+radius+5,2*radius+52,19,10,MUTE,true,1);
-  tx(idx>=0?value(idx):juce::String("-"),
-     x-radius-27,y+radius+22,2*radius+54,17,10,0xff8899b0u,false,1);
+  // Miniature knob labels are confined to their own cell, not adjacent controls.
+  const float labelWidth=radius<=19.f?60.f:std::min(92.f,2.f*radius+16.f);
+  tx(name,x-labelWidth*.5f,y+radius+3,labelWidth,15,10,MUTE,true,1);
+  tx(idx>=0?value(idx):juce::String("-"),x-labelWidth*.5f,y+radius+18,labelWidth,13,10,0xffc0cddd,false,1);
  }
  void miniKnob(float x,float y,const char* name,int idx=-1,float fallback=.5f,
                juce::uint32 accent=CYAN){
@@ -149,6 +157,12 @@ struct Painter {
   juce::Path triangle;triangle.addTriangle(x+w-20,y+36,x+w-12,y+36,x+w-16,y+41);
   g.setColour(c(accent));g.fillPath(triangle);
  }
+ void meter(float x,float y,float w,float raw){
+  const float db=20.f*std::log10(std::max(raw,1.e-5f));const float f=clamp((db+60.f)/60.f);
+  rr(x,y,w,9,3,0xff09111bu);
+  for(int i=0;i<24;i++){float q=(i+1)/24.f;rect(x+i*w/24.f,y+1,w/24.f-1.1f,7,q<=f?(i>=22?0xffed7770u:i>=18?GOLD:CYAN):0xff293547u);}
+ }
+ void star(float x,float y,bool active){juce::Path p;for(int i=0;i<10;i++){float a=-pi*.5f+i*pi*.2f,r=(i%2==0?9.f:4.f);float xx=x+std::cos(a)*r,yy=y+std::sin(a)*r;if(i==0)p.startNewSubPath(xx,yy);else p.lineTo(xx,yy);}p.closeSubPath();g.setColour(c(GOLD));if(active)g.fillPath(p);else g.strokePath(p,juce::PathStrokeType(1.4f));}
  void level(float x,float y,float w,float v,juce::uint32 accent=CYAN){
   rr(x,y,w,4,2,0xff0b101bu);
   rr(x,y,w*clamp(v),4,2,accent);
@@ -300,10 +314,10 @@ void Painter::header(){
  rr(363,5,266,46,8,DARK);outline(363,5,266,46,8,STROKE);
  const int ix=juce::jlimit(0,99,dsp.currentPreset());
  tx(u(serenity::factoryPresets()[(size_t)ix].name),377,10,227,29,15,TYPE,true);
- tx("-",381,35,210,13,12,CYAN);
+ tx(u(serenity::factoryPresets()[(size_t)ix].category),381,35,210,13,11,CYAN);
  tx("v",600,15,19,20,13,CYAN,true,1);
  button(640,7,35,42,">");
- button(684,7,34,42,dsp.isFavorite(ix)?"★":"☆");
+ button(684,7,34,42,"");star(701,28,dsp.isFavorite(ix));
  button(730,7,34,42,"S");
  button(786,10,34,35,"A",activeAB==0,GOLD);
  button(824,10,34,35,"B",activeAB==1,GOLD);
@@ -318,9 +332,9 @@ void Painter::header(){
  tx(juce::String(dsp.getVoiceCount()),1302,7,35,34,17,MUTE,true,1);
  tx("VOICES",1296,34,50,17,10,MUTE,true,1);
  tx("L",1358,7,15,13,10,MUTE);
- level(1382,14,99,dsp.getOutputLevel());
+ meter(1382,10,99,std::max(meterLeft,dsp.getChannelPeak(0)));
  tx("R",1357,30,18,13,10,MUTE);
- level(1382,37,99,dsp.getOutputLevel()*.92f);
+ meter(1382,33,99,std::max(meterRight,dsp.getChannelPeak(1)));
  // Native navigation - aligns with screenshot tab edges.
  rr(0,63,1492,42,0,0xff111722u);
  const std::array<int,11> edges{{0,176,388,507,667,793,959,1112,1228,1355,1492}};
@@ -332,23 +346,22 @@ void Painter::header(){
   const int x=edges[(size_t)i],w=edges[(size_t)i+1]-x;
   const bool active=(i==selectedPage);
   if(active){rect((float)x,64,(float)w,40,0xff242931u);
-    rect((float)x,102,(float)w,2,GOLD);}
+    rect((float)x,102,(float)w,2,GOLD);rect((float)x+2,98,(float)w-4,3,0xff78633cu);}
   tx(fr?frs[i]:en[i],(float)x+2,68,(float)w-4,27,12,active?GOLD:MUTE,true,1);
  }
 }
 void Painter::sources(float y) {
  rr(11,y,1476,36,9,0xff101823u);outline(11,y,1476,36,9,STROKE);
- tx("DRAG TO A KNOB",24,y+9,136,20,11,MUTE,true);
+ tx(tr("MOD SOURCES","SOURCES MOD."),24,y+9,136,20,11,MUTE,true);
  const char* chips[]={"ENV 1","ENV 2","ENV 3","ENV 4","ENV 5","ENV 6",
  "LFO 1","LFO 2","LFO 3","LFO 4","LFO 5","LFO 6","LFO 7","LFO 8",
  "VEL","KEY","MOD WHL","AFT","RAND","SEQ"};
  float x=165.f;
  for(auto chip:chips) {
-  const float w=juce::jlimit(47.f,83.f,12.f+(float)juce::String(chip).length()*8.7f);
-  outline(x,y+5,w,26,14,PURPLE,1.3f);
-  tx(chip,x+2,y+5,w-4,24,11,PURPLE,true,1);
-  x+=w+5.f;
-  if(x>1450.f)break;
+  const float w=61.f;const bool implemented=x<165.f+17.f*65.f;
+  outline(x,y+5,w,26,14,implemented?PURPLE:STROKE,1.2f);
+  tx(chip,x+2,y+5,w-4,24,10,implemented?PURPLE:MUTE,true,1);
+  x+=w+4.f;
  }
 }
 void Painter::footer() {
@@ -362,8 +375,8 @@ void Painter::footer() {
   const int param=serenity::macroBrightness+i;
   knob(x,915,16.f,fr?frs[i]:en[i],param,
        (i%3==1)?PURPLE:(i%3==2)?GOLD:CYAN);
-  outline(x-16,951,32,24,12,(i%3==1)?PURPLE:(i%3==2)?GOLD:CYAN,1.4f);
-  tx("M",x-14,951,28,23,11,(i%3==1)?PURPLE:CYAN,true,1);
+  outline(x-16,963,32,14,7,(i%3==1)?PURPLE:(i%3==2)?GOLD:CYAN,1.1f);
+  tx("M",x-14,963,28,14,9,(i%3==1)?PURPLE:CYAN,true,1);
  }
  panel(749,top,121,119,"WHEELS");
  rr(765,897,7,54,3,0xff0b1320u);rr(823,897,7,54,3,0xff0b1320u);
@@ -496,7 +509,7 @@ void Painter::editor(){
  line(23,592,425,592,STROKE);
  tx(juce::String(selectedWave+1).paddedLeft('0',2),22,601,43,29,17,CYAN,true);
  tx(selectedWave==16?"Custom":waves[selectedWave],56,601,254,29,17,TYPE,true);
- button(321,604,103,28,"OSC A",true,CYAN);
+ button(321,604,103,28,("OSC "+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8(),true,CYAN);
  tx("8 FRAMES · 512 SAMPLES PER FRAME",23,727,388,22,11,MUTE,true);
  tx("BAND-LIMITED IN 9 SPECTRAL LEVELS",23,748,390,22,11,MUTE);
  panel(446,118,701,723,
@@ -544,7 +557,7 @@ void Painter::editor(){
   rect(1200+i*8.3f,hbase-amp*188,5.2f,std::max(2.f,amp*188),CYAN);
  }
  tx("1         8          16         24        32",1190,375,286,19,10,MUTE);
- tx("HARMONIC 1–32 · dB BELOW THE STRONGEST",1167,388,318,20,10,MUTE,true);
+ tx(tr("HARMONICS 1-32 / RELATIVE LEVEL","HARMONIQUES 1-32 / NIVEAU RELATIF"),1167,388,318,20,10,MUTE,true);
  panel(1157,422,330,219,"OUTPUT WAVEFORM");
  wavetableWave(1169,462,306,142,selectedOsc,selectedWave,val(serenity::position),CYAN,.96f);
  tx("GREY = TABLE · COLOUR = AFTER WARP + SHAPE",1166,607,310,21,10,MUTE);
@@ -745,8 +758,8 @@ void Painter::effects(){
 void Painter::arpeggiator(){
  panel(11,118,1476,158,"STEP ARPEGGIATOR");
  button(23,185,150,30,"ARP ON",dsp.getSequenceMode()==1,GOLD);
- tx("TEMPO 120.0 BPM",35,217,160,21,11,MUTE,true);
- select(197,184,191,"RATE","16th");
+ tx("TEMPO "+juce::String(dsp.getHostTempo(),1)+" BPM",35,217,160,21,11,MUTE,true);
+ select(197,184,191,"RATE","1/"+juce::String(dsp.getSequenceRate()));
  knob(447,192,24,"STEPS",-1,(float)dsp.getSequenceLength()/64.f);
  knob(531,192,24,"GATE",-1,dsp.getSequenceGate());
  knob(613,192,24,"SWING",-1,dsp.getSequenceSwing());
@@ -756,26 +769,27 @@ void Painter::arpeggiator(){
      721,198,732,23,12,MUTE);
  tx("Gate controls note duration. Zero velocity creates a rest.",721,221,735,22,12,MUTE);
  panel(11,289,1476,395,"PITCH PATTERN",PURPLE);
- tx("SEMITONES FROM THE KEY YOU PRESS · NOTE NAMES FOR C4",972,295,488,20,10,MUTE,true);
+ tx(tr("SEMITONES / C4 REFERENCE","DEMI-TONS / RÉFÉRENCE C4"),972,295,369,20,10,MUTE,true);
  grid(23,328,1452,345,10,5);
  tx("Drag to paint steps · double click resets a step · wheel adjusts",
      74,341,716,18,11,MUTE);
- const int length=dsp.getSequenceLength(),first=0,bank=dsp.getSequenceBank();
+ const int length=dsp.getSequenceLength(),first=sequencePage*16,bank=dsp.getSequenceBank();
+ button(1353,294,116,26,(juce::String(first+1)+" - "+juce::String(first+16)).toRawUTF8(),true,GOLD);
  const int playing=dsp.getSequencePlayingStep();
  const char* names[]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
  for(int i=0;i<16;i++){
   const auto step=dsp.getSequenceStep(bank,first+i);
   float x=83.f+i*87.f;
   float h=std::abs(step.pitch)/24.f*122.f;
-  const bool active=i<length;
-  if(i==playing&&dsp.getSequenceMode()==1)rect(x-4,381,77,246,0xff1b3445u);
+  const bool active=first+i<length;
+  if(first+i==playing&&dsp.getSequenceMode()==1)rect(x-4,381,77,246,0xff1b3445u);
   const float by=493.f;
   rect(x,step.pitch>=0?by-h:by,65,std::max(2.f,h),active?CYAN:0xff294f59u);
   tx(juce::String(step.pitch>0?"+":"")+juce::String(step.pitch),
     x+18,step.pitch>=0?by-h-23:by+h+4,50,18,11,active?TYPE:MUTE,true);
   const int midi=juce::jlimit(0,127,60+step.pitch);
   tx(juce::String(names[midi%12])+juce::String(midi/12-1),x+10,626,54,17,10,MUTE);
-  tx(juce::String(i+1),x+25,650,48,17,10,MUTE);
+  tx(juce::String(first+i+1),x+25,650,48,17,10,MUTE);
  }
  line(74,494,1465,494,0xff3a5468u,1.6f);
  panel(11,699,1476,142,"PATTERN TOOLS",GOLD);
@@ -790,8 +804,8 @@ void Painter::arpeggiator(){
 void Painter::sequencer(){
  panel(11,118,1476,134,"STEP SEQUENCER");
  button(23,174,150,28,"SEQ ON",dsp.getSequenceMode()==2,GOLD);
- tx("TEMPO 120.0 BPM",37,204,148,18,11,MUTE);
- select(197,171,189,"RATE","16th");
+ tx("TEMPO "+juce::String(dsp.getHostTempo(),1)+" BPM",37,204,148,18,11,MUTE);
+ select(197,171,189,"RATE","1/"+juce::String(dsp.getSequenceRate()));
  knob(442,183,20,"STEPS",-1,(float)dsp.getSequenceLength()/64.f);
  knob(517,183,20,"GATE",-1,dsp.getSequenceGate());
  knob(589,183,20,"SWING",-1,dsp.getSequenceSwing());
@@ -808,20 +822,21 @@ void Painter::sequencer(){
   button(1436,y+4,39,24,">");
   const float gTop=y+41,gHeight=height-55;
   grid(24,gTop,1450,gHeight,8,3);
-  const int first=0,steps=dsp.getSequenceLength(),playing=dsp.getSequencePlayingStep();
+  const int first=sequencePage*16,steps=dsp.getSequenceLength(),playing=dsp.getSequencePlayingStep();
+  tx(juce::String(first+1)+" - "+juce::String(first+16),1101,y+4,116,24,11,GOLD,true,2);
   for(int i=0;i<16;i++){
    const auto step=dsp.getSequenceStep(dsp.getSequenceBank(),first+i);
    const float x=84.f+i*87.0f;
    float v=type==0?(float)step.pitch/24.f:type==1?step.velocity:step.modulation;
-   const bool active=i<steps;
+   const bool active=first+i<steps;
    float middle=type==1?gTop+gHeight-7.f:gTop+gHeight*.5f;
    const float maxH=(type==1?gHeight-15.f:gHeight*.45f);
    float size=std::max(2.f,std::abs(v)*maxH);
    rect(x,(type==1||v>=0.f)?middle-size:middle,65,size,
         active?colour:0xff2b4a56u);
-   if(active && playing==i&&dsp.getSequenceMode()==2)
+   if(active && playing==first+i&&dsp.getSequenceMode()==2)
     outline(x-4,gTop+3,73,gHeight-6,3,GOLD,1.5f);
-   tx(juce::String(i+1),x+23,gTop+gHeight-21,32,18,10,MUTE);
+   tx(juce::String(first+i+1),x+23,gTop+gHeight-21,32,18,10,MUTE);
   }
  };
  lane(266,193,"PITCH · SEMITONES",0,PURPLE);
@@ -832,11 +847,13 @@ void Painter::matrix(){
  rr(11,118,1476,49,8,PANEL);
  outline(11,118,1476,49,8,STROKE);
  tx("MODULATION MATRIX",38,127,244,32,17,TYPE,true);
- tx("Any source to any destination · amounts −1 … +1",273,135,560,21,11,MUTE);
- tx("0 / 64 in use",1235,132,113,25,12,MUTE);
- button(1351,127,116,30,"CLEAR ALL");
- panel(11,176,732,617,"SLOTS 01–12",PURPLE);
- panel(755,176,732,617,"SLOTS 13–24",PURPLE);
+ int used=0;for(int i=0;i<64;i++){auto r=dsp.getRoute(i);if(r.source>=0&&r.destination>=0&&r.amount!=0.f)used++;}
+ tx(tr("Amount: -1 to +1","Quantité : -1 à +1"),293,135,320,21,11,MUTE);
+ tx(juce::String(used)+" / 64",905,127,145,32,13,CYAN,true,2);
+ for(int i=0;i<3;i++)button(1099+i*123.f,126,118,31,(juce::String(i*24+1)+" - "+juce::String(std::min(64,(i+1)*24))).toRawUTF8(),matrixPage==i,GOLD);
+ const int start=matrixPage*24;
+ panel(11,176,732,617,("SLOTS "+juce::String(start+1)+" - "+juce::String(std::min(64,start+12))).toRawUTF8(),PURPLE);
+ panel(755,176,732,617,("SLOTS "+juce::String(start+13)+" - "+juce::String(std::min(64,start+24))).toRawUTF8(),PURPLE);
  const char* names[]={"ENV 1","ENV 2","ENV 3","ENV 4","ENV 5","ENV 6",
                       "LFO 1","LFO 2","LFO 3","LFO 4","LFO 5","LFO 6","LFO 7","LFO 8",
                       "VEL","KEY","MOD WHL"};
@@ -848,7 +865,8 @@ void Painter::matrix(){
   tx("DESTINATION",bx+278,215,176,22,10,MUTE,true);
   tx("AMOUNT",bx+465,215,142,22,10,MUTE,true);
   for(int row=0;row<12;row++){
-   const int idx=col*12+row;
+   const int idx=matrixPage*24+col*12+row;
+   if(idx>=64)continue;
    const auto route=dsp.getRoute(idx);
    const float y=246.f+row*44.8f;
    tx(juce::String(idx+1).paddedLeft('0',2),bx+21,y+3,38,25,12,MUTE,true);
@@ -908,8 +926,8 @@ void Painter::presets(){
 }
 void Painter::settings(){
  panel(11,118,732,365,"PERFORMANCE");
- tx("TUNING & RESPONSE",22,155,396,23,11,MUTE,true);
- line(21,165,730,165,STROKE);
+ tx(tr("TUNING & RESPONSE","ACCORDAGE ET RÉPONSE"),22,151,396,20,11,MUTE,true);
+ line(21,173,730,173,STROKE);
  const char* names[]={"MASTER TUNE","BEND RANGE","VEL CURVE","VOICE LEVEL","TEMPO"};
  for(int i=0;i<5;i++){
   const float x=88.f+143.f*i;
@@ -925,7 +943,7 @@ void Painter::settings(){
  tx("Both also follow your keyboard: CC 64, channel pressure and pitch wheel.",
     530,382,181,60,11,MUTE);
  panel(754,118,733,365,"MIDI LEARN",PURPLE);
- button(767,158,147,32,"LEARN: OFF",dsp.currentlyLearning()>=0,PURPLE);
+ button(767,158,147,32,dsp.currentlyLearning()>=0?"LEARN: ON":"LEARN: OFF",dsp.currentlyLearning()>=0,PURPLE);
  tx(tr("Learn is off. Mapped controllers keep working.",
        "Apprentissage inactif. Les contrôleurs mémorisés fonctionnent."),
     929,159,515,32,12,MUTE);
@@ -953,14 +971,14 @@ void Painter::settings(){
  button(1383,422,88,28,"CLEAR ALL");
  panel(11,495,732,345,"KEYBOARD & MOUSE",GOLD);
  tx("SHORTCUTS",22,535,330,26,12,MUTE,true);
- const char* shortcuts[]={"CTRL/⌘ + Z","CTRL/⌘ + S","CTRL/⌘ + F",
+ const char* shortcuts[]={"CTRL/CMD + Z","CTRL/CMD + S","CTRL/CMD + F",
                            "[  ]","ALT  1..0"};
  const char* functions[]={"Undo","Save preset","Search presets","Previous / next preset","Switch tab"};
  for(int i=0;i<5;i++){
   button(23,565+i*38.f,131,26,shortcuts[i]);
-  tx(functions[i],202,565+i*38.f,302,25,12,MUTE);
+  tx(functions[i],165,565+i*38.f,221,25,12,MUTE);
  }
- tx("CONTROLS",396,535,322,23,12,MUTE,true);
+ tx(tr("CONTROLS","COMMANDES"),396,535,322,23,12,MUTE,true);
  const char* methods[]={"Drag","Shift + drag","Wheel","Double click","Right click"};
  const char* descriptions[]={"Change a value","Fine adjust","Step up or down","Reset to default","Enter value / MIDI learn"};
  for(int i=0;i<5;i++){
@@ -996,7 +1014,7 @@ void Painter::settings(){
 void SerenityEditor::paintNativePage(juce::Graphics& g){
  juce::Graphics::ScopedSaveState saved(g);
  g.addTransform(juce::AffineTransform::scale((float)getWidth()/1492.f,(float)getHeight()/991.f));
- Painter p(g,synth,selectedOsc,tab,activeAB,selectedEnv,selectedLfo);
+ Painter p(g,synth,selectedOsc,tab,activeAB,selectedEnv,selectedLfo,matrixPage,sequencePage,meterLeft,meterRight);
  g.fillAll(juce::Colour(BG));
  p.header();
  switch(tab){

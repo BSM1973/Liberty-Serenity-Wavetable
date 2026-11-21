@@ -599,6 +599,7 @@ void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce:
   if(auto position=playhead->getPosition())
    if(auto bpm=position->getBpm())
     sequence.tempo=(float)*bpm;
+ hostTempoDisplay.store(sequence.tempo,std::memory_order_relaxed);
  engine.setHostTempo(sequence.tempo);
  engine.setSequence(sequence);
  for(int i=0;i<64;i++) engine.route((size_t)i)=getRoute(i);
@@ -629,9 +630,10 @@ void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce:
  engine.render(l+prev,r+prev,buffer.getNumSamples()-prev);
  voiceCount.store(engine.numVoices(),std::memory_order_relaxed);
  sequencePlayingStep.store(engine.sequenceStep(),std::memory_order_relaxed);
- float peak=0;
- for(int n=0;n<buffer.getNumSamples();n++) peak=std::max(peak,std::max(std::abs(l[n]),std::abs(r[n])));
- outputMeter.store(peak,std::memory_order_relaxed);
+ float peakL=0,peakR=0;
+ for(int n=0;n<buffer.getNumSamples();n++){peakL=std::max(peakL,std::abs(l[n]));peakR=std::max(peakR,std::abs(r[n]));}
+ outputPeakLeft.store(peakL,std::memory_order_relaxed);outputPeakRight.store(peakR,std::memory_order_relaxed);
+ outputMeter.store(std::max(peakL,peakR),std::memory_order_relaxed);
  const int numSamples=buffer.getNumSamples();
  if(numSamples>0){
   for(int k=0;k<256;k++){

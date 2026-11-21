@@ -129,7 +129,11 @@ int main(){
     }
    return digest;
  };
- if(editor->getWidth()<900 || editor->getHeight()<590){
+ for(const auto viewport:std::array<juce::Point<int>,3>{{{1280,800},{1440,900},{1024,768}}}){
+  auto size=SerenityEditor::fitEditorSize(viewport.x,viewport.y);
+  if(size.x>viewport.x-42||size.y>viewport.y-58||size.x<=0||size.y<=0||std::abs((float)size.x/size.y-1492.f/991.f)>.01f){std::cerr<<"ERROR: editor does not fit viewport"<<std::endl;return 34;}
+ }
+ if(editor->getWidth()<850 || editor->getHeight()<560){
   std::cerr<<"ERROR: impractical UI dimensions"<<std::endl;
   return 11;
  }
@@ -167,7 +171,7 @@ int main(){
    }
    processor.setValue(serenity::oscALevel,original);
   }
-  if(tab==0 || tab==1 || tab==5 || tab==6 || tab==8 || tab==9){
+  {
    auto destination=juce::File::getCurrentWorkingDirectory().getChildFile(
        juce::String("Serenity-UI-Preview-")+juce::String(tab)+".png");
    juce::PNGImageFormat png;
@@ -180,6 +184,16 @@ int main(){
    std::cerr<<"ERROR: two native pages have identical renders: "<<a<<","<<b<<std::endl;
    return 29;
   }
+ // Every page in both languages at a compact laptop's usable area.
+ const auto compact=SerenityEditor::fitEditorSize(1280,800);editor->setSize(compact.x,compact.y);
+ for(int lang=0;lang<2;lang++){processor.setFrench(lang==0);
+  for(int page=0;page<10;page++){editor->selectTabForSmokeTest(page);juce::Image img(juce::Image::ARGB,compact.x,compact.y,true);
+   {juce::Graphics g(img);editor->paint(g);}
+   if(img.isNull()||pixelDigest(img)==0)return 35;
+   auto file=juce::File::getCurrentWorkingDirectory().getChildFile(juce::String("Serenity-UI-Preview-")+(lang==0?"FR-":"EN-")+juce::String(page)+"-13inch.png");
+   juce::PNGImageFormat png;auto stream=std::unique_ptr<juce::FileOutputStream>(file.createOutputStream());if(stream)png.writeImageToStream(img,*stream);
+  }
+ }
  editor.reset();
  processor.releaseResources();
  std::cout<<"SERENITY_TEN_NATIVE_UI_PAGES_AND_LIVE_CONTROLS_OK"<<std::endl;
