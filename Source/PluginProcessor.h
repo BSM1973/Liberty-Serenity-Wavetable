@@ -26,6 +26,10 @@ enum Parameter : int {
  oscAShape,oscBShape,oscCShape,oscDShape,
  oscAWarpMode,oscBWarpMode,oscCWarpMode,oscDWarpMode,
  oscAShapeMode,oscBShapeMode,oscCShapeMode,oscDShapeMode,
+ // v0.9.2: appended; older host automation IDs remain stable.
+ oscABlend,oscBBlend,oscCBlend,oscDBlend,
+ oscAPhase,oscBPhase,oscCPhase,oscDPhase,
+ oscARandPhase,oscBRandPhase,oscCRandPhase,oscDRandPhase,
  parameterCount
 };
 struct ParamSpec { const char *id; float lo, hi, initial; };

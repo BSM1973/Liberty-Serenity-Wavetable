@@ -255,7 +255,9 @@ std::vector<SerenityEditor::Hotspot> SerenityEditor::hotspots()const {
      {65,708,22,oscAOctave+selected},{150,708,22,oscASemi+selected},
      {235,708,22,oscAFine+selected},{321,708,22,oscAPan+selected},
      {527,708,24,detune},{614,708,24,spread},
-     {442,708,24,uni[selected]}});
+     {442,708,24,uni[selected]},
+     {704,708,24,oscABlend+selected},{790,708,24,oscAPhase+selected},
+     {877,708,24,oscARandPhase+selected}});
    break;
   }
   case 1: hs.insert(hs.end(),{{500,714,30,position},

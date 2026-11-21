@@ -27,7 +27,10 @@ const std::array<ParamSpec,parameterCount> specs={{
  {"oscAWarp",-1,1,0},{"oscBWarp",-1,1,0},{"oscCWarp",-1,1,0},{"oscDWarp",-1,1,0},
  {"oscAShape",0,1,0},{"oscBShape",0,1,0},{"oscCShape",0,1,0},{"oscDShape",0,1,0},
  {"oscAWarpMode",0,3,0},{"oscBWarpMode",0,3,0},{"oscCWarpMode",0,3,0},{"oscDWarpMode",0,3,0},
- {"oscAShapeMode",0,3,0},{"oscBShapeMode",0,3,0},{"oscCShapeMode",0,3,0},{"oscDShapeMode",0,3,0}
+ {"oscAShapeMode",0,3,0},{"oscBShapeMode",0,3,0},{"oscCShapeMode",0,3,0},{"oscDShapeMode",0,3,0},
+ {"oscABlend",0,1,0},{"oscBBlend",0,1,0},{"oscCBlend",0,1,0},{"oscDBlend",0,1,0},
+ {"oscAPhase",0,1,0},{"oscBPhase",0,1,0},{"oscCPhase",0,1,0},{"oscDPhase",0,1,0},
+ {"oscARandPhase",0,1,0},{"oscBRandPhase",0,1,0},{"oscCRandPhase",0,1,0},{"oscDRandPhase",0,1,0}
 }};
 }
 
@@ -131,6 +134,9 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
   p.oscShape[i]=getValue(serenity::oscAShape+i);
   p.oscWarpMode[i]=(int)std::lround(getValue(serenity::oscAWarpMode+i));
   p.oscShapeMode[i]=(int)std::lround(getValue(serenity::oscAShapeMode+i));
+  p.oscBlend[i]=getValue(serenity::oscABlend+i);
+  p.oscPhase[i]=getValue(serenity::oscAPhase+i);
+  p.oscRandPhase[i]=getValue(serenity::oscARandPhase+i);
  }
  p.polyphony=(int)getValue(serenity::polyphony);
  // 8 macro parameters are host-automatable; map 4 useful defaults into DSP.
@@ -138,6 +144,11 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
  p.lfoDepth=serenity::clamp(p.lfoDepth+(getValue(serenity::macroMovement)-.5f)*.14f,0,1);
  p.reverb=serenity::clamp(p.reverb+(getValue(serenity::macroSpace)-.5f)*.15f,0,1);
  p.spread=serenity::clamp(p.spread+(getValue(serenity::macroWidth)-.5f)*.2f,0,1);
+ // Four additional macro mappings; 0.5 is neutral.
+ p.drive=serenity::clamp(p.drive+(getValue(serenity::macroWarmth)-.5f)*.28f,0,1);
+ p.position=serenity::clamp(p.position+(getValue(serenity::macroTexture)-.5f)*.30f,0,1);
+ p.master=serenity::clamp(p.master+(getValue(serenity::macroEnergy)-.5f)*.25f,0,1.5f);
+ p.reverb=serenity::clamp(p.reverb+(getValue(serenity::macroSerenity)-.5f)*.22f,0,1);
  return p;
 }
 
@@ -441,6 +452,9 @@ void SerenityAudioProcessor::applyPreset(int index){
   setValue(serenity::oscAShape+osc,p.oscShape[osc]);
   setValue(serenity::oscAWarpMode+osc,(float)p.oscWarpMode[osc]);
   setValue(serenity::oscAShapeMode+osc,(float)p.oscShapeMode[osc]);
+  setValue(serenity::oscABlend+osc,p.oscBlend[osc]);
+  setValue(serenity::oscAPhase+osc,p.oscPhase[osc]);
+  setValue(serenity::oscARandPhase+osc,p.oscRandPhase[osc]);
  }
  selectedPreset.store(index);
 }

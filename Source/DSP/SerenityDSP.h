@@ -31,6 +31,8 @@ struct Params {
  float oscPitch[4]={0,0,0,-12};
  float oscOctave[4]{},oscSemi[4]{},oscFine[4]{},oscPan[4]{};
  float oscWarp[4]{},oscShape[4]{};
+ // Unison and phase controls default to neutral for backward compatibility.
+ float oscBlend[4]{},oscPhase[4]{},oscRandPhase[4]{};
  int oscWarpMode[4]{},oscShapeMode[4]{};
  int wave[4]={1,0,3,0};
  int unison[4]={1,1,1,1};
@@ -132,12 +134,20 @@ struct Voice {
  Envelope amp;
  std::array<Envelope,6> envelopes{};
  std::array<std::array<float,maxUnison>,generators> phase{};
+ std::array<std::array<float,maxUnison>,generators> phaseJitter{};
  uint64_t age=0;
  void start(int n,float v,uint64_t when) noexcept {
   note=n;velocity=v;active=true;age=when;amp={};amp.on();
   for(auto &env:envelopes){env={};env.on();}
   filterL=filterR=filter2L=filter2R=0;filter3L=filter3R=filter4L=filter4R=0;
   for(auto &array:phase) array.fill(0);
+  // Stable random phase per note, not per sample (no allocation in render).
+  for(int gen=0;gen<generators;gen++)for(int u=0;u<maxUnison;u++){
+   uint32_t h=(uint32_t)n*0x9e3779b9u ^ (uint32_t)(when^(when>>32))*0x85ebca6bu ^
+              (uint32_t)(gen+1)*0xc2b2ae35u ^ (uint32_t)(u+1)*0x27d4eb2fu;
+   h^=h>>16;h*=0x7feb352du;h^=h>>15;h*=0x846ca68bu;h^=h>>16;
+   phaseJitter[(size_t)gen][(size_t)u]=(float)(h>>8)/16777216.f;
+  }
  }
 };
 
@@ -272,11 +282,15 @@ public:
       float det=(uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.detune*.19f;
       float freq=base*std::pow(2.f,det/12.f);
       float &ph=v.phase[gen][u];
-      const float warped=oscillatorWarpPhase(ph,p.oscWarp[gen],p.oscWarpMode[gen]);
+      const float shifted=ph+clamp(p.oscPhase[gen],0.f,1.f)+
+                          clamp(p.oscRandPhase[gen],0.f,1.f)*v.phaseJitter[(size_t)gen][(size_t)u];
+      const float warped=oscillatorWarpPhase(shifted,p.oscWarp[gen],p.oscWarpMode[gen]);
       float x=(p.wave[gen]==waveCount ?
        customBandlimited.sample(gen,warped,clamp(p.position+frameMod,0,1),freq,sr) :
        bank.sample(p.wave[gen],warped,clamp(p.position+frameMod,0,1),freq,sr));
-      x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen])*amp;
+      const float outer=uni==1?0.f:std::abs((2.f*u)/(uni-1)-1.f);
+      const float blendGain=1.f-.65f*clamp(p.oscBlend[gen],0.f,1.f)*outer;
+      x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen])*amp*blendGain;
       ph+=freq/sr;if(ph>=1.f)ph-=std::floor(ph);
       float pan=clamp(((uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.spread)+panMod+
                        p.oscPan[gen],-1,1);

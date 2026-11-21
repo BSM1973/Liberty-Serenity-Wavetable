@@ -460,9 +460,9 @@ void Painter::oscillators(){
  miniKnob(442,708,"UNISON",unisons[selectedOsc],.5f,CYAN);
  miniKnob(527,708,"DETUNE",serenity::detune,.25f,CYAN);
  miniKnob(614,708,"SPREAD",serenity::spread,.70f,CYAN);
- miniKnob(704,708,"BLEND",-1,.70f);
- miniKnob(790,708,"PHASE",-1,.00f);
- miniKnob(877,708,"RAND PH",-1,.50f);
+ miniKnob(704,708,"BLEND",serenity::oscABlend+selectedOsc,0.f);
+ miniKnob(790,708,"PHASE",serenity::oscAPhase+selectedOsc,0.f);
+ miniKnob(877,708,"RAND PH",serenity::oscARandPhase+selectedOsc,0.f);
  panel(941,638,546,155,"CROSS MODULATION",PURPLE);
  select(960,674,144,"FM TYPE","Phase Mod",PURPLE);
  select(960,737,144,"RING TYPE","Ring",PURPLE);
