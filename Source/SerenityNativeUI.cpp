@@ -56,17 +56,34 @@ struct Painter {
  }
  void panel(float x,float y,float w,float h,const char* title,
             juce::uint32 accent=CYAN){
-  g.setGradientFill(juce::ColourGradient(c(PANE2),x,y,c(PANEL),x+w,y+h,false));
+  // Brushed titanium/graphite; subtle directional sheen within the exact panel.
+  g.setGradientFill(juce::ColourGradient(c(0xff2b374bu),x,y,
+                                         c(0xff1a2536u),x+w*.7f,y+h,false));
   g.fillRoundedRectangle(x,y,w,h,8.f);
-  outline(x,y,w,h,8.f,STROKE);
-  line(x+2,y+28,x+w-2,y+28,0xff3b4a60u);
-  // Reconstructed illuminated diamond, not a raster glyph.
+  {
+   juce::Graphics::ScopedSaveState clipped(g);
+   g.reduceClipRegion(juce::Rectangle<int>((int)x+2,(int)y+2,
+                                  std::max(1,(int)w-4),std::max(1,(int)h-4)));
+   for(float scan=y+3.f;scan<y+h-2.f;scan+=4.f) {
+    g.setColour(c(0xffb9c6d6u).withAlpha(.019f));
+    g.drawHorizontalLine((int)scan,x+3.f,x+w-3.f);
+   }
+  }
+  outline(x+.5f,y+.5f,w-1.f,h-1.f,8.f,STROKE,1.2f);
+  line(x+6,y+1.8f,x+w-6,y+1.8f,0xff556278u,1.2f);
+  line(x+3,y+h-2.f,x+w-3,y+h-2.f,0xff0b1421u,1.3f);
+  g.setGradientFill(juce::ColourGradient(c(0xff2e3b4fu),x,y+2,
+                                          c(0xff1b293bu),x,y+29,false));
+  g.fillRect(juce::Rectangle<float>(x+3,y+3,w-6,25));
+  line(x+4,y+28,x+w-4,y+28,0xff3f5167u,1.f);
   juce::Path diamond;
   diamond.startNewSubPath(x+15,y+9);
   diamond.lineTo(x+20,y+14);diamond.lineTo(x+15,y+19);
   diamond.lineTo(x+10,y+14);diamond.closeSubPath();
+  g.setColour(c(accent).withAlpha(.19f));
+  g.fillEllipse(x+7,y+6,16,16);
   g.setColour(c(accent));g.fillPath(diamond);
-  tx(title,x+27,y+3,w-37,24,13,0xffc6d1e2u,true);
+  tx(title,x+27,y+3,w-38,24,12,0xffd3ddec,true);
  }
  void grid(float x,float y,float w,float h,int cols=6,int rows=4){
   rr(x,y,w,h,5.f,DARK);
@@ -87,9 +104,11 @@ struct Painter {
   const float v=val(idx,fallback);
   g.setColour(c(0xff0b1220u));g.fillEllipse(x-radius-3,y-radius-3,2*radius+6,2*radius+6);
   g.setColour(c(0xff526176u));g.drawEllipse(x-radius-2,y-radius-2,2*radius+4,2*radius+4,1.4f);
-  g.setGradientFill(juce::ColourGradient(c(0xff49556cu),x-radius,y-radius,
-                                          c(0xff111928u),x+radius,y+radius,true));
+  g.setGradientFill(juce::ColourGradient(c(0xff68758au),x-radius*.65f,y-radius,
+                                          c(0xff121a2bu),x+radius*.6f,y+radius,true));
   g.fillEllipse(x-radius,y-radius,radius*2,radius*2);
+  g.setColour(c(0xff93a3b8u).withAlpha(.28f));
+  g.drawEllipse(x-radius+2,y-radius+2,2*radius-4,2*radius-4,1.f);
   g.setColour(c(0xff152034u));g.drawEllipse(x-radius+4,y-radius+4,
                                                (radius-4)*2,(radius-4)*2,1.f);
   const float start=pi*.76f, end=start+pi*1.48f;
@@ -114,8 +133,11 @@ struct Painter {
  }
  void button(float x,float y,float w,float h,const char* label,bool active=false,
              juce::uint32 accent=CYAN){
-  rr(x,y,w,h,6.f,active?0xff314452u:DARK);
-  outline(x,y,w,h,6.f,active?accent:STROKE);
+  g.setGradientFill(juce::ColourGradient(c(active?0xff3c4b5bu:0xff1b2534u),
+                    x,y,c(active?0xff1d2c3au:0xff0b121du),x,y+h,false));
+  g.fillRoundedRectangle(x,y,w,h,6.f);
+  outline(x+.5f,y+.5f,w-1.f,h-1.f,6.f,active?accent:STROKE,1.2f);
+  line(x+5,y+2,x+w-5,y+2,active?0xff778b9eu:0xff38465au,1.f);
   tx(label,x+3,y,w-6,h,11,active?accent:MUTE,true,1);
  }
  void select(float x,float y,float w,const char* title,const juce::String& selected,
