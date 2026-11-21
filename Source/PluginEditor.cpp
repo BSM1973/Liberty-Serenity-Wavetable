@@ -261,9 +261,15 @@ std::vector<SerenityEditor::Hotspot> SerenityEditor::hotspots()const {
  const float centers[]={61,150,240,330,420,509,598,687};
  for(int i=0;i<8;i++)hs.push_back({centers[i],916,23,macroBrightness+i});
  switch(tab){
-  case 0: hs.insert(hs.end(),{{1041,316,30,position},{1165,316,30,position},
-   {1415,315,30,oscALevel},{522,711,27,detune},{612,711,27,spread},
-   {441,711,27,oscAUnison},{65,710,27,cutoff}});break;
+  case 0:{
+   const int lev[]={oscALevel,oscBLevel,oscCLevel,oscDLevel};
+   const int uni[]={oscAUnison,oscBUnison,oscCUnison,oscDUnison};
+   const int selected=juce::jlimit(0,3,selectedOsc);
+   hs.insert(hs.end(),{{1043,317,30,position},{1416,317,30,lev[selected]},
+     {527,708,25,detune},{614,708,25,spread},
+     {442,708,25,uni[selected]}});
+   break;
+  }
   case 1: hs.insert(hs.end(),{{500,715,33,position},{798,713,33,position},
    {1093,714,33,position}});break;
   case 2: hs.insert(hs.end(),{{64,676,34,cutoff},{149,676,31,resonance},
@@ -377,6 +383,18 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   if(p.x>637&&p.x<680){selectPreset((synth.currentPreset()+1)%100);return;}
  }
  if((tab==5||tab==6)&&sequenceClick(p))return;
+ if(tab==0&&p.x>=20&&p.x<186&&p.y>121&&p.y<624){
+  selectedOsc=juce::jlimit(0,3,(int)((p.y-121)/129.f));
+  showStatus(tr("Oscillateur sélectionné : ","Selected oscillator: ")+
+     juce::String::charToString((juce_wchar)('A'+selectedOsc)));
+  repaint();return;
+ }
+ if(tab==0&&p.x>=278&&p.x<956&&p.y>=156&&p.y<612){
+  selectedParameter=serenity::position;
+  draggedParameter=serenity::position;
+  startValue=synth.getValue(serenity::position);
+  return;
+ }
  if(tab==0&&p.x>186&&p.x<253&&p.y>121&&p.y<624){
   int which=juce::jlimit(0,3,(int)((p.y-121)/129.f));
   const int levels[]={serenity::oscALevel,serenity::oscBLevel,serenity::oscCLevel,serenity::oscDLevel};
