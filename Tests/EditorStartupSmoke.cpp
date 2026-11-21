@@ -115,18 +115,27 @@ int main(){
   if(tab==6)processor.setSequenceMode(2);
   editor->selectTabForSmokeTest(tab);
   auto snapshot=juce::Image(juce::Image::ARGB,editor->getWidth(),editor->getHeight(),true);
-  juce::Graphics painter(snapshot);
-  editor->paint(painter);
+  {
+   juce::Graphics painter(snapshot);
+   editor->paint(painter);
+  } // Flush platform-specific Graphics state before reading pixels on Windows.
   if(snapshot.isNull()) return 12;
   pageDigests[(size_t)tab]=pixelDigest(snapshot);
   if(pageDigests[(size_t)tab]==0)return 13;
   if(tab==0){
    const auto baseline=pageDigests[0];
    const float original=processor.getValue(serenity::oscALevel);
-   processor.setValue(serenity::oscALevel,original>=.5f?0.f:1.f);
+   const float target=original>=.5f?0.f:1.f;
+   processor.setValue(serenity::oscALevel,target);
+   if(std::abs(processor.getValue(serenity::oscALevel)-original)<.20f){
+    std::cerr<<"ERROR: OSC A parameter did not change on this platform"<<std::endl;
+    return 30;
+   }
    auto changed=juce::Image(juce::Image::ARGB,editor->getWidth(),editor->getHeight(),true);
-   juce::Graphics other(changed);
-   editor->paint(other);
+   {
+    juce::Graphics other(changed);
+    editor->paint(other);
+   } // Finish the rasterizer before measuring a deterministic pixel checksum.
    if(pixelDigest(changed)==baseline){
     std::cerr<<"ERROR: editing OSC A did not alter native rendered UI"<<std::endl;
     return 28;
