@@ -42,6 +42,141 @@ struct Painter {
  void line(float x1,float y1,float x2,float y2,juce::uint32 colour,float thick=1.f){
   g.setColour(c(colour));g.drawLine(x1,y1,x2,y2,thick);
  }
+ juce::String localized(const juce::String& input)const{
+  if(!fr)return input;
+  static const std::pair<const char*,const char*> labels[]={
+   {"FILTER RESPONSE","RÉPONSE DES FILTRES"},
+   {"FILTER 1","FILTRE 1"},
+   {"FILTER 2","FILTRE 2"},
+   {"ROUTING","ROUTAGE"},
+   {"Serial","Série"},
+   {"Parallel","Parallèle"},
+   {"CUTOFF","COUPURE"},
+   {"RESONANCE","RÉSONANCE"},
+   {"ENV AMT","ENV 2"},
+   {"KEY TRK","CLAVIER"},
+   {"VEL AMT","VÉLOCITÉ"},
+   {"SPREAD","ÉCART"},
+   {"LEVEL","NIVEAU"},
+   {"WAVETABLE LIBRARY","TABLES D'ONDES"},
+   {"HARMONICS","HARMONIQUES"},
+   {"OUTPUT WAVEFORM","FORME D'ONDE"},
+   {"POSITION SWEEP","BALAYAGE POSITION"},
+   {"ENVELOPES","ENVELOPPES"},
+   {"ATTACK","ATTAQUE"},
+   {"HOLD","MAINTIEN"},
+   {"DECAY","DÉCROISS."},
+   {"SUSTAIN","SOUTIEN"},
+   {"RELEASE","RELÂCHEM."},
+   {"CURVE","COURBE"},
+   {"VEL SENS","VÉLOCITÉ"},
+   {"LOOP","BOUCLE"},
+   {"SHAPE","FORME"},
+   {"MODE","MODE"},
+   {"DIVISION","DIVISION"},
+   {"Free","Libre"},
+   {"Tempo","Tempo"},
+   {"Sine","Sinus"},
+   {"Square","Carré"},
+   {"Saw Up","Dent montante"},
+   {"Saw Down","Dent descend."},
+   {"RATE","VITESSE"},
+   {"SMOOTH","LISSAGE"},
+   {"FADE IN","FONDU"},
+   {"SIGNAL FLOW","SIGNAL"},
+   {"EQUALIZER","ÉGALISEUR"},
+   {"COMPRESSOR","COMPRESSEUR"},
+   {"REVERB","RÉVERB."},
+   {"FEEDBACK","RÉTROACT."},
+   {"DAMPING","AMORTISS."},
+   {"SIZE","TAILLE"},
+   {"PRE DLY","PRÉ-DÉLAI"},
+   {"LOW CUT","COUPE-BAS"},
+   {"WIDTH","LARGEUR"},
+   {"THRESHOLD","SEUIL"},
+   {"MAKEUP","GAIN"},
+   {"TONE","TONALITÉ"},
+   {"AMOUNT","QUANTITÉ"},
+   {"DEPTH","PROFOND."},
+   {"TIME","TEMPS"},
+   {"FREQ","FRÉQ."},
+   {"VOLUME","VOLUME"},
+   {"EFFECT","EFFET"},
+   {"STEP ARPEGGIATOR","ARPÉGIATEUR À PAS"},
+   {"STEP SEQUENCER","SÉQUENCEUR À PAS"},
+   {"STEPS","PAS"},
+   {"PITCH PATTERN","MOTIF MÉLODIQUE"},
+   {"PATTERN TOOLS","OUTILS DE MOTIF"},
+   {"PATTERN","MOTIF"},
+   {"EDIT","ÉDITION"},
+   {"CLEAR","EFFACER"},
+   {"RANDOM","ALÉATOIRE"},
+   {"RANDOMISE","ALÉATOIRE"},
+   {"SHIFT LEFT","VERS GAUCHE"},
+   {"SHIFT RIGHT","VERS DROITE"},
+   {"MODULATION MATRIX","MATRICE DE MODULATION"},
+   {"SLOT","EMPLAC."},
+   {"SOURCE","SOURCE"},
+   {"DESTINATION","DESTINATION"},
+   {"Off","Inactif"},
+   {"None","Aucune"},
+   {"BROWSE","NAVIGATION"},
+   {"LIBRARY · 100 SOUNDS","BIBLIOTHÈQUE / 100 SONS"},
+   {"SELECTED PRESET","PRESET SÉLECTIONNÉ"},
+   {"IMPORT / EXPORT","IMPORT / EXPORT"},
+   {"EXPORT","EXPORTER"},
+   {"IMPORT","IMPORTER"},
+   {"PERFORMANCE","PERFORMANCE"},
+   {"MASTER TUNE","ACCORDAGE"},
+   {"BEND RANGE","PITCH BEND"},
+   {"VEL CURVE","COURBE VÉL."},
+   {"VOICE LEVEL","NIV. VOIX"},
+   {"KEYBOARD & MOUSE","CLAVIER ET SOURIS"},
+   {"SHORTCUTS","RACCOURCIS"},
+   {"Undo","Annuler"},
+   {"Save preset","Sauver preset"},
+   {"Search presets","Chercher presets"},
+   {"Previous / next preset","Preset précédent / suivant"},
+   {"Switch tab","Changer de page"},
+   {"Drag","Glisser"},
+   {"Shift + drag","Maj + glisser"},
+   {"Wheel","Molette"},
+   {"Double click","Double clic"},
+   {"Right click","Clic droit"},
+   {"Change a value","Modifier valeur"},
+   {"Fine adjust","Réglage fin"},
+   {"Step up or down","Augmenter / réduire"},
+   {"Reset to default","Réinitialiser"},
+   {"Enter value / MIDI learn","Valeur / MIDI Learn"},
+   {"ABOUT","À PROPOS"},
+   {"GENERATORS","GÉNÉRATEURS"},
+   {"WAVETABLES","TABLES D'ONDES"},
+   {"FILTERS","FILTRES"},
+   {"LFOS","LFO"},
+   {"SEQUENCER","SÉQUENCEUR"},
+   {"VOICES","VOIX"},
+   {"CONTROLLER","CONTRÔLEUR"},
+   {"PARAMETER","PARAMÈTRE"},
+   {"CLEAR ALL","TOUT EFFACER"},
+   {"WHEELS","MOLETTES"},
+   {"SPECTRUM","SPECTRE"},
+   {"OSCILLOSCOPE","OSCILLOSCOPE"},
+   {"MACROS · DRAG ONTO A KNOB","MACROS / MODULATION"},
+   {"CROSS MODULATION","MODULATION CROISÉE"},
+   {"PITCH · PAN","HAUTEUR / PAN"},
+   {"TABLE · WARP · SHAPE","TABLE / WARP / FORME"},
+   {"One engine, three lanes","Un moteur, trois pistes"},
+   {"Pitch, velocity and modulation are edited per step.","Hauteur, vélocité et modulation par pas."},
+   {"Level 0 makes a rest.","Niveau 0 : silence."},
+   {"Plays a pattern on every key you hold","Joue un motif pour chaque touche maintenue"},
+   {"Each held note follows the pattern; pitch is relative to the MIDI key.","Chaque note suit le motif en fonction de sa hauteur."},
+   {"Gate controls note duration. Zero velocity creates a rest.","Gate règle la durée. Vélocité 0 : silence."},
+   {"Drag to paint steps · double click resets a step · wheel adjusts","Glisser : dessiner / double clic : réinitialiser / molette : ajuster"},
+   {"Preset, synthesis parameters and user wavetable are saved together.","Preset, paramètres et table utilisateur enregistrés ensemble."}
+  };
+  for(const auto& item:labels)if(input==u(item.first))return u(item.second);
+  return input;
+ }
  void tx(const juce::String& str,float x,float y,float w,float h,int points=12,
          juce::uint32 colour=TYPE,bool bold=false,int justification=0){
   if(w<=0||h<=0)return;
@@ -51,7 +186,7 @@ struct Painter {
   g.reduceClipRegion(bounds);
   g.setColour(c(colour));
   g.setFont(juce::Font(juce::jmin((float)points+1.f,h*.84f),bold?juce::Font::bold:juce::Font::plain));
-  g.drawFittedText(str,bounds,
+  g.drawFittedText(localized(str),bounds,
     justification==1?juce::Justification::centred:
     justification==2?juce::Justification::centredRight:
     juce::Justification::centredLeft,1,.78f);
@@ -104,7 +239,9 @@ struct Painter {
   return clamp((dsp.getValue(idx)-sp.lo)/std::max(.000001f,sp.hi-sp.lo));
  }
  juce::String value(int idx,int precision=2) const {
-  return idx<0?juce::String("0.50"):juce::String(dsp.getValue(idx),precision);
+  if(idx<0)return "-";float v=dsp.getValue(idx);if(std::abs(v)<.00005f)v=0.f;
+  if((idx>=serenity::oscALevel&&idx<=serenity::oscDLevel))return juce::String(v,precision);
+  return juce::String(v,precision);
  }
  void knob(float x,float y,float radius,const char* name,int idx=-1,
            juce::uint32 accent=CYAN,float fallback=.5f){
@@ -129,6 +266,10 @@ struct Painter {
   const float labelWidth=radius<=19.f?60.f:std::min(92.f,2.f*radius+16.f);
   tx(name,x-labelWidth*.5f,y+radius+3,labelWidth,15,10,MUTE,true,1);
   tx(idx>=0?value(idx):juce::String("-"),x-labelWidth*.5f,y+radius+18,labelWidth,13,10,0xffc0cddd,false,1);
+ }
+ void sequenceValues(float a,float b,float c,float y){
+  const float centers[]={a,b,c};const juce::String vals[]={juce::String(dsp.getSequenceLength()),juce::String(dsp.getSequenceGate()*100.f,0)+"%",juce::String(dsp.getSequenceSwing()*100.f,0)+"%"};
+  for(int i=0;i<3;i++){rr(centers[i]-29,y,58,13,2,0xff253143u);tx(vals[i],centers[i]-29,y,58,13,10,TYPE,true,1);}
  }
  void miniKnob(float x,float y,const char* name,int idx=-1,float fallback=.5f,
                juce::uint32 accent=CYAN){
@@ -325,7 +466,7 @@ void Painter::header(){
  button(914,10,35,35,"R");
  button(960,9,60,38,"LEARN",dsp.currentlyLearning()>=0,PURPLE);
  button(1024,12,29,32,fr?"FR":"EN",true,GOLD);
- tx("MASTER",1053,7,77,18,10,MUTE,true);
+ tx("MASTER",1058,7,75,18,10,MUTE,true);
  level(1056,34,119,val(serenity::master));
  tx("TUNE",1187,9,65,16,10,MUTE,true);
  level(1188,34,92,.48f,PURPLE);
@@ -591,8 +732,8 @@ void Painter::filters(){
  button(674,578,56,24,dsp.getValue(serenity::filter1Enabled)>.5f?"ON":"OFF",dsp.getValue(serenity::filter1Enabled)>.5f,GOLD);
  button(1418,578,57,24,dsp.getValue(serenity::filter2Enabled)>.5f?"ON":"OFF",
         dsp.getValue(serenity::filter2Enabled)>.5f,PURPLE);
- select(21,605,209,"TYPE",serenity::filterNames[type1]);
- select(768,605,204,"TYPE",serenity::filterNames[type2],PURPLE);
+ select(21,602,209,"TYPE",serenity::filterNames[type1]);
+ select(768,602,204,"TYPE",serenity::filterNames[type2],PURPLE);
  const float x1[]={63,149,233,328,399,467,531,602,668};
  const float x2[]={803,890,977,1073,1140,1207,1276,1344,1411};
  const char* labels[]={"CUTOFF","RESONANCE","DRIVE","ENV AMT","KEY TRK","VEL AMT","MIX","SHAPE","SPREAD"};
@@ -600,8 +741,8 @@ void Painter::filters(){
   const int ids1[]={serenity::cutoff,serenity::resonance,serenity::filter1Drive,serenity::filter1Env,serenity::filter1Key,serenity::filter1Vel,serenity::filter1Mix,-1,-1};
   const int ids2[]={serenity::filter2Cutoff,serenity::filter2Resonance,serenity::filter2Drive,serenity::filter2Env,serenity::filter2Key,serenity::filter2Vel,serenity::filter2Mix,-1,-1};
   const int p1=ids1[i],p2=ids2[i];
-  knob(x1[i],680,i<3?29.f:19.f,labels[i],p1,CYAN);
-  knob(x2[i],680,i<3?29.f:19.f,labels[i],p2,PURPLE);
+  knob(x1[i],705,i<3?23.f:19.f,labels[i],p1,CYAN);
+  knob(x2[i],705,i<3?23.f:19.f,labels[i],p2,PURPLE);
  }
  tx("Env Amt sweeps the cutoff with Envelope 2 (±5 octaves).",24,760,620,22,11,MUTE);
  tx("Filter 2 can operate in series or in parallel.",769,760,585,22,11,MUTE);
@@ -676,8 +817,8 @@ void Painter::effects(){
  panel(285,160,261,225,"FILTER");
  panel(556,160,474,225,"EQUALIZER");
  panel(1040,160,447,225,"COMPRESSOR");
- waveform(21,198,241,59,5,0,CYAN,.4f);
- waveform(297,198,237,59,0,0,CYAN,.7f);
+ waveform(21,198,241,46,5,0,CYAN,.4f);
+ waveform(297,198,237,46,0,0,CYAN,.7f);
  grid(571,198,445,86,8,4);
  const auto low=serenity::eqCoefficients(0,dsp.getValue(serenity::eqLowFreq),dsp.getValue(serenity::eqLowGain),1.f,48000.f);
  const auto mid=serenity::eqCoefficients(1,dsp.getValue(serenity::eqMidFreq),dsp.getValue(serenity::eqMidGain),dsp.getValue(serenity::eqMidQ),48000.f);
@@ -690,8 +831,8 @@ void Painter::effects(){
  for(int i=0;i<=128;i++){float in=-60.f+60.f*i/128.f;float out=in+serenity::compressorGainDb(in,dsp.getValue(serenity::compThreshold),dsp.getValue(serenity::compRatio));
   float x=1057.f+413.f*i/128.f,y=279.f-(out+60.f)*76.f/60.f;if(i==0)compLine.startNewSubPath(x,y);else compLine.lineTo(x,y);}
  g.setColour(c(PURPLE));g.strokePath(compLine,juce::PathStrokeType(2.f));
- select(21,266,239,"TYPE","Soft");
- select(294,266,240,"TYPE","Low Pass");
+ select(21,245,239,"TYPE","Soft");
+ select(294,245,240,"TYPE","Low Pass");
  miniKnob(77,325,"AMOUNT",serenity::drive,.3f);
  miniKnob(143,325,"TONE",-1,.7f);
  miniKnob(210,325,"MIX",-1,1.f);
@@ -707,18 +848,18 @@ void Painter::effects(){
  panel(731,391,160,219,"RING",PURPLE);
  panel(901,391,316,219,"DELAY");
  panel(1226,391,261,219,"MASTER",PURPLE);
- waveform(23,425,264,55,0,0,PURPLE,.48f);
+ waveform(23,425,264,37,0,0,PURPLE,.48f);
  tab(323,427,91,31,"Tremolo",dsp.getValue(serenity::tremMode)<.5f,PURPLE);
  tab(416,427,91,31,"Autopan",dsp.getValue(serenity::tremMode)>.5f,PURPLE);
  waveform(515,427,193,70,0,.02f,CYAN);
  waveform(743,429,136,61,4,0,PURPLE);
- waveform(912,423,292,65,6,0,CYAN);
+ waveform(912,423,292,39,6,0,CYAN);
  waveform(1237,424,237,83,0,0,PURPLE,.42f);
  const char* fxTypes[]={"Chorus","Flanger","Phaser"};
- select(23,488,264,"EFFECT",fxTypes[juce::jlimit(0,2,(int)dsp.getValue(serenity::modFxType))],PURPLE);
+ select(23,464,264,"EFFECT",fxTypes[juce::jlimit(0,2,(int)dsp.getValue(serenity::modFxType))],PURPLE);
  select(323,474,181,"SHAPE","Sine",PURPLE);
- select(912,488,143,"MODE","Stereo");
- select(1060,488,144,"SYNC","Off");
+ select(912,464,143,"MODE","Stereo");
+ select(1060,464,144,"SYNC","Off");
  for(int i=0;i<4;i++)miniKnob(58+i*66.f,548,
   i==0?"RATE":i==1?"DEPTH":i==2?"FEEDBACK":"MIX",serenity::modFxRate+i,.5f,PURPLE);
  miniKnob(585,547,"RATE",serenity::tremRate,.5f,PURPLE);
@@ -745,12 +886,12 @@ void Painter::effects(){
  miniKnob(517,686,"LFO 1",-1,.3f,PURPLE);
  miniKnob(517,762,"LFO 2",-1,.5f,PURPLE);
  for(int row=0;row<6;row++){
-  const float y=655+row*32.f;
+  const float y=652+row*29.f;
   tx("S"+juce::String(row+1),735,y,32,27,11,MUTE);
   rr(772,y+2,195,25,4,DARK);tx("Off",780,y+2,179,25,11,MUTE);
   rr(994,y+2,195,25,4,DARK);tx("None",1002,y+2,179,25,11,MUTE);
   level(1204,y+16,213,0.f,PURPLE);
-  tx("0.00",1435,y+5,50,25,11,MUTE);
+  tx("0.00",1435,y+3,44,24,11,MUTE);
  }
 }
 
@@ -763,6 +904,7 @@ void Painter::arpeggiator(){
  knob(447,192,24,"STEPS",-1,(float)dsp.getSequenceLength()/64.f);
  knob(531,192,24,"GATE",-1,dsp.getSequenceGate());
  knob(613,192,24,"SWING",-1,dsp.getSequenceSwing());
+ sequenceValues(447,531,613,234);
  line(688,160,688,261,STROKE);
  tx("Plays a pattern on every key you hold",720,169,735,26,14,TYPE);
  tx("Each held note follows the pattern; pitch is relative to the MIDI key.",
@@ -809,6 +951,7 @@ void Painter::sequencer(){
  knob(442,183,20,"STEPS",-1,(float)dsp.getSequenceLength()/64.f);
  knob(517,183,20,"GATE",-1,dsp.getSequenceGate());
  knob(589,183,20,"SWING",-1,dsp.getSequenceSwing());
+ sequenceValues(442,517,589,221);
  line(656,156,656,242,STROKE);
  tx("One engine, three lanes",693,161,480,27,14,TYPE);
  tx("Pitch, velocity and modulation are edited per step.",693,189,554,22,12,MUTE);
@@ -836,7 +979,8 @@ void Painter::sequencer(){
         active?colour:0xff2b4a56u);
    if(active && playing==first+i&&dsp.getSequenceMode()==2)
     outline(x-4,gTop+3,73,gHeight-6,3,GOLD,1.5f);
-   tx(juce::String(first+i+1),x+23,gTop+gHeight-21,32,18,10,MUTE);
+   rr(x+15,gTop+gHeight-20,35,16,3,DARK);
+   tx(juce::String(first+i+1),x+15,gTop+gHeight-20,35,16,10,TYPE,true,1);
   }
  };
  lane(266,193,"PITCH · SEMITONES",0,PURPLE);
@@ -940,8 +1084,8 @@ void Painter::settings(){
  tx("AFTERTOUCH",22,383,145,22,11,MUTE,true);
  level(20,405,301,.30f,PURPLE);
  button(337,384,162,29,"SUSTAIN PEDAL");
- tx("Both also follow your keyboard: CC 64, channel pressure and pitch wheel.",
-    530,382,181,60,11,MUTE);
+ tx(tr("CC 64 / PRESSURE","CC 64 / PRESSION"),530,382,181,22,11,MUTE);
+ tx(tr("PITCH WHEEL","MOLETTE PITCH"),530,405,181,22,11,MUTE);
  panel(754,118,733,365,"MIDI LEARN",PURPLE);
  button(767,158,147,32,dsp.currentlyLearning()>=0?"LEARN: ON":"LEARN: OFF",dsp.currentlyLearning()>=0,PURPLE);
  tx(tr("Learn is off. Mapped controllers keep working.",

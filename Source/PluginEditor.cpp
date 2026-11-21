@@ -269,9 +269,9 @@ std::vector<SerenityEditor::Hotspot> SerenityEditor::hotspots()const {
   case 1: hs.insert(hs.end(),{{500,714,30,position},
    {796,714,30,oscAWarp+juce::jlimit(0,3,selectedOsc)},
    {1092,714,30,oscAShape+juce::jlimit(0,3,selectedOsc)}});break;
-  case 2: hs.insert(hs.end(),{{64,676,34,cutoff},{149,676,31,resonance},
-   {803,676,34,filter2Cutoff},{888,676,31,filter2Resonance},
-   {1276,680,23,filter2Mix},{233,680,29,filter1Drive},{328,680,23,filter1Env},{399,680,23,filter1Key},{467,680,23,filter1Vel},{531,680,23,filter1Mix},{977,680,29,filter2Drive},{1073,680,23,filter2Env},{1140,680,23,filter2Key},{1207,680,23,filter2Vel}});break;
+  case 2: hs.insert(hs.end(),{{63,705,25,cutoff},{149,705,25,resonance},
+   {803,705,25,filter2Cutoff},{890,705,25,filter2Resonance},
+   {1276,705,23,filter2Mix},{233,705,25,filter1Drive},{328,705,23,filter1Env},{399,705,23,filter1Key},{467,705,23,filter1Vel},{531,705,23,filter1Mix},{977,705,25,filter2Drive},{1073,705,23,filter2Env},{1140,705,23,filter2Key},{1207,705,23,filter2Vel}});break;
   case 3:{
    const float x[]={60,151,240,332,421,513};for(int k=0;k<6;k++)hs.push_back({x[k],582,24,envParameter(selectedEnv,k)});
    hs.push_back({803,639,24,lfoParameter(selectedLfo,0)});hs.push_back({893,639,24,lfoParameter(selectedLfo,2)});
@@ -504,7 +504,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   if(p.x>=1364&&p.x<=1474&&p.y>=570&&p.y<=596){const int id=serenity::lfoParameter(selectedLfo,3);rememberUndo();synth.setValue(id,synth.getValue(id)>.5f?0.f:1.f);repaint();return;}
  }
  if(tab==4&&p.x>=25&&p.x<=187&&p.y>=710&&p.y<=742){showChoiceMenu(serenity::reverbType,{"Room","Hall","Large Space","Chamber"});return;}
- if(tab==4&&p.x>=23&&p.x<=287&&p.y>=510&&p.y<=542){showChoiceMenu(serenity::modFxType,{"Chorus","Flanger","Phaser"});return;}
+ if(tab==4&&p.x>=23&&p.x<=287&&p.y>=486&&p.y<=518){showChoiceMenu(serenity::modFxType,{"Chorus","Flanger","Phaser"});return;}
  if(tab==4&&p.y>=427&&p.y<=458&&p.x>=323&&p.x<=507){rememberUndo();synth.setValue(serenity::tremMode,p.x>=416?1.f:0.f);repaint();return;}
  if(tab==0&&p.y>=120&&p.y<151&&p.x>=801&&p.x<942){
   selectedOsc=juce::jlimit(0,3,(int)((p.x-801)/35.f));
@@ -593,7 +593,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   }
  }
  if(tab==2){
-  if(p.y>=627&&p.y<=659&&((p.x>=21&&p.x<=230)||(p.x>=768&&p.x<=972))){juce::StringArray choices;for(auto name:serenity::filterNames)choices.add(name);showChoiceMenu(p.x<500?serenity::filter1Type:serenity::filter2Type,choices);return;}
+  if(p.y>=624&&p.y<=656&&((p.x>=21&&p.x<=230)||(p.x>=768&&p.x<=972))){juce::StringArray choices;for(auto name:serenity::filterNames)choices.add(name);showChoiceMenu(p.x<500?serenity::filter1Type:serenity::filter2Type,choices);return;}
   if(p.x>=674&&p.x<=730&&p.y>=578&&p.y<=602){rememberUndo();synth.setValue(serenity::filter1Enabled,synth.getValue(serenity::filter1Enabled)>.5f?0.f:1.f);repaint();return;}
   if(p.y>154&&p.y<191&&p.x>=1265&&p.x<=1481){
    synth.setValue(serenity::filterRouting,p.x>1371?1.f:0.f);
