@@ -627,6 +627,131 @@ void Painter::effects(){
  }
 }
 
+
+void Painter::arpeggiator(){
+ panel(11,118,1476,158,"STEP ARPEGGIATOR");
+ button(23,185,150,30,"ARP ON",dsp.getSequenceMode()==1,GOLD);
+ tx("TEMPO 120.0 BPM",35,217,160,21,11,MUTE,true);
+ select(197,184,191,"RATE","16th");
+ knob(447,192,24,"STEPS",-1,(float)dsp.getSequenceLength()/64.f);
+ knob(531,192,24,"GATE",-1,dsp.getSequenceGate());
+ knob(613,192,24,"SWING",-1,dsp.getSequenceSwing());
+ line(688,160,688,261,STROKE);
+ tx("Plays a pattern on every key you hold",720,169,735,26,14,TYPE);
+ tx("Each held note follows the pattern; pitch is relative to the MIDI key.",
+     721,198,732,23,12,MUTE);
+ tx("Gate controls note duration. Zero velocity creates a rest.",721,221,735,22,12,MUTE);
+ panel(11,289,1476,395,"PITCH PATTERN",PURPLE);
+ tx("SEMITONES FROM THE KEY YOU PRESS · NOTE NAMES FOR C4",972,295,488,20,10,MUTE,true);
+ grid(23,328,1452,345,10,5);
+ tx("Drag to paint steps · double click resets a step · wheel adjusts",
+     74,341,716,18,11,MUTE);
+ const int length=dsp.getSequenceLength(),first=0,bank=dsp.getSequenceBank();
+ const int playing=dsp.getSequencePlayingStep();
+ const char* names[]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+ for(int i=0;i<16;i++){
+  const auto step=dsp.getSequenceStep(bank,first+i);
+  float x=83.f+i*87.f;
+  float h=std::abs(step.pitch)/24.f*122.f;
+  const bool active=i<length;
+  if(i==playing&&dsp.getSequenceMode()==1)rect(x-4,381,77,246,0xff1b3445u);
+  const float by=493.f;
+  rect(x,step.pitch>=0?by-h:by,65,std::max(2.f,h),active?CYAN:0xff294f59u);
+  tx(juce::String(step.pitch>0?"+":"")+juce::String(step.pitch),
+    x+18,step.pitch>=0?by-h-23:by+h+4,50,18,11,active?TYPE:MUTE,true);
+  const int midi=juce::jlimit(0,127,60+step.pitch);
+  tx(juce::String(names[midi%12])+juce::String(midi/12-1),x+10,626,54,17,10,MUTE);
+  tx(juce::String(i+1),x+25,650,48,17,10,MUTE);
+ }
+ line(74,494,1465,494,0xff3a5468u,1.6f);
+ panel(11,699,1476,142,"PATTERN TOOLS",GOLD);
+ const char* patterns[]={"OCTAVES","MAJOR","MINOR","MINOR 7TH","MAJOR 7TH","UP-DOWN","FIFTHS","SUS 4","CLEAR"};
+ for(int i=0;i<9;i++)button(125.f+i*137.f,746,129,29,patterns[i]);
+ const char* edits[]={"OCTAVE -","OCTAVE +","SHIFT LEFT","SHIFT RIGHT","RANDOMISE"};
+ for(int i=0;i<5;i++)button(125.f+i*137.f,789,129,30,edits[i]);
+ tx("PATTERN",22,749,99,23,11,MUTE,true);
+ tx("EDIT",22,792,99,23,11,MUTE,true);
+ tx("Edits are undoable (Cmd/Ctrl+Z).",832,797,570,19,11,MUTE);
+}
+void Painter::sequencer(){
+ panel(11,118,1476,134,"STEP SEQUENCER");
+ button(23,174,150,28,"SEQ ON",dsp.getSequenceMode()==2,GOLD);
+ tx("TEMPO 120.0 BPM",37,204,148,18,11,MUTE);
+ select(197,171,189,"RATE","16th");
+ knob(442,183,20,"STEPS",-1,(float)dsp.getSequenceLength()/64.f);
+ knob(517,183,20,"GATE",-1,dsp.getSequenceGate());
+ knob(589,183,20,"SWING",-1,dsp.getSequenceSwing());
+ line(656,156,656,242,STROKE);
+ tx("One engine, three lanes",693,161,480,27,14,TYPE);
+ tx("Pitch, velocity and modulation are edited per step.",693,189,554,22,12,MUTE);
+ tx("Level 0 makes a rest.",693,212,442,22,11,MUTE);
+ button(1265,163,91,27,"SEQ LANE",true,PURPLE);
+ auto lane=[&](float y,float height,const char* title,int type,juce::uint32 colour){
+  panel(11,y,1476,height,title,colour);
+  button(1235,y+4,78,24,"RANDOM");
+  button(1321,y+4,64,24,"CLEAR");
+  button(1396,y+4,38,24,"<");
+  button(1436,y+4,39,24,">");
+  const float gTop=y+41,gHeight=height-55;
+  grid(24,gTop,1450,gHeight,8,3);
+  const int first=0,steps=dsp.getSequenceLength(),playing=dsp.getSequencePlayingStep();
+  for(int i=0;i<16;i++){
+   const auto step=dsp.getSequenceStep(dsp.getSequenceBank(),first+i);
+   const float x=84.f+i*87.0f;
+   float v=type==0?(float)step.pitch/24.f:type==1?step.velocity:step.modulation;
+   const bool active=i<steps;
+   float middle=type==1?gTop+gHeight-7.f:gTop+gHeight*.5f;
+   const float maxH=(type==1?gHeight-15.f:gHeight*.45f);
+   float size=std::max(2.f,std::abs(v)*maxH);
+   rect(x,(type==1||v>=0.f)?middle-size:middle,65,size,
+        active?colour:0xff2b4a56u);
+   if(active && playing==i&&dsp.getSequenceMode()==2)
+    outline(x-4,gTop+3,73,gHeight-6,3,GOLD,1.5f);
+   tx(juce::String(i+1),x+23,gTop+gHeight-21,32,18,10,MUTE);
+  }
+ };
+ lane(266,193,"PITCH · SEMITONES",0,PURPLE);
+ lane(473,156,"LEVEL · VELOCITY, 0 = REST",1,CYAN);
+ lane(643,198,"MOD · SEQ LANE SOURCE",2,PURPLE);
+}
+void Painter::matrix(){
+ rr(11,118,1476,49,8,PANEL);
+ outline(11,118,1476,49,8,STROKE);
+ tx("MODULATION MATRIX",38,127,244,32,17,TYPE,true);
+ tx("Any source to any destination · amounts −1 … +1",273,135,560,21,11,MUTE);
+ tx("0 / 64 in use",1235,132,113,25,12,MUTE);
+ button(1351,127,116,30,"CLEAR ALL");
+ panel(11,176,732,617,"SLOTS 01–12",PURPLE);
+ panel(755,176,732,617,"SLOTS 13–24",PURPLE);
+ const char* names[]={"ENV 1","ENV 2","ENV 3","ENV 4","ENV 5","ENV 6",
+                      "LFO 1","LFO 2","LFO 3","LFO 4","LFO 5","LFO 6","LFO 7","LFO 8",
+                      "VEL","KEY","MOD WHL"};
+ const char* dst[]={"Pitch","Wavetable","Cutoff","Amplitude","Pan"};
+ for(int col=0;col<2;col++){
+  const float bx=col?755.f:11.f;
+  tx("SLOT",bx+20,215,46,22,10,MUTE,true);
+  tx("SOURCE",bx+68,215,145,22,10,MUTE,true);
+  tx("DESTINATION",bx+278,215,176,22,10,MUTE,true);
+  tx("AMOUNT",bx+465,215,142,22,10,MUTE,true);
+  for(int row=0;row<12;row++){
+   const int idx=col*12+row;
+   const auto route=dsp.getRoute(idx);
+   const float y=246.f+row*44.8f;
+   tx(juce::String(idx+1).paddedLeft('0',2),bx+21,y+3,38,25,12,MUTE,true);
+   rr(bx+67,y,179,30,5,DARK);outline(bx+67,y,179,30,5,STROKE);
+   rr(bx+273,y,178,30,5,DARK);outline(bx+273,y,178,30,5,STROKE);
+   tx(route.source>=0&&route.source<17?names[route.source]:"Off",
+      bx+77,y+2,154,27,13,route.source>=0?CYAN:MUTE);
+   tx(route.destination>=0&&route.destination<5?dst[route.destination]:"None",
+      bx+285,y+2,154,27,13,route.destination>=0?CYAN:MUTE);
+   level(bx+463,y+13,146,(route.amount+1.f)*.5f,PURPLE);
+   tx(juce::String(route.amount,2),bx+613,y+2,74,27,12,MUTE);
+   button(bx+687,y+1,25,29,"x");
+  }
+ }
+ sources();
+}
+
 } // namespace
 
 void SerenityEditor::paintNativePage(juce::Graphics& g){
