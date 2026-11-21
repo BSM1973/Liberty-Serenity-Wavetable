@@ -48,12 +48,9 @@ private:
  void paintPresets(juce::Graphics&);
  void paintMatrix(juce::Graphics&);
  void paintOscillators(juce::Graphics&);
- void paintEditor(juce::Graphics&);
  void showWavetableMenu();
  void importWavetableAudio();
  void drawCustomPoint(juce::Point<float> p);
- void paintCustomWaveform(juce::Graphics& g);
- void paintCustomHarmonics(juce::Graphics& g);
  void drawCustomHarmonic(juce::Point<float> p);
  void paintSequencer(juce::Graphics&);
  bool editSequenceAt(juce::Point<float>,int lane);
