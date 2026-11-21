@@ -423,6 +423,16 @@ void SerenityAudioProcessor::applyPreset(int index){
   {serenity::filterRouting,p.parallelFilters?1.f:0.f}
  };
  for(const auto& v:values) setValue(v.first,v.second);
+ for(int osc=0;osc<4;osc++){
+  setValue(serenity::oscAOctave+osc,p.oscOctave[osc]);
+  setValue(serenity::oscASemi+osc,p.oscSemi[osc]);
+  setValue(serenity::oscAFine+osc,p.oscFine[osc]);
+  setValue(serenity::oscAPan+osc,p.oscPan[osc]);
+  setValue(serenity::oscAWarp+osc,p.oscWarp[osc]);
+  setValue(serenity::oscAShape+osc,p.oscShape[osc]);
+  setValue(serenity::oscAWarpMode+osc,(float)p.oscWarpMode[osc]);
+  setValue(serenity::oscAShapeMode+osc,(float)p.oscShapeMode[osc]);
+ }
  selectedPreset.store(index);
 }
 const juce::String SerenityAudioProcessor::getProgramName(int index){
