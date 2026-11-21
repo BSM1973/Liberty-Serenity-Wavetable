@@ -1,5 +1,4 @@
 #include "PluginEditor.h"
-#include <BinaryData.h>
 #include <cmath>
 
 namespace {
@@ -17,20 +16,6 @@ const char* categoriesFR[]={"Tous","Favoris","Basses","Nappes","Cinématique","L
 
 juce::AudioProcessorEditor* SerenityAudioProcessor::createEditor(){return new SerenityEditor(*this);}
 SerenityEditor::SerenityEditor(SerenityAudioProcessor& p):juce::AudioProcessorEditor(&p),synth(p){
- const std::array<std::pair<const void*,int>,10> skinsData={{
-  {BinaryData::skin_oscillators_png,BinaryData::skin_oscillators_pngSize},
-  {BinaryData::skin_editor_png,BinaryData::skin_editor_pngSize},
-  {BinaryData::skin_filters_png,BinaryData::skin_filters_pngSize},
-  {BinaryData::skin_modulation_png,BinaryData::skin_modulation_pngSize},
-  {BinaryData::skin_effects_png,BinaryData::skin_effects_pngSize},
-  {BinaryData::skin_arpeggiator_png,BinaryData::skin_arpeggiator_pngSize},
-  {BinaryData::skin_sequencer_png,BinaryData::skin_sequencer_pngSize},
-  {BinaryData::skin_matrix_png,BinaryData::skin_matrix_pngSize},
-  {BinaryData::skin_presets_png,BinaryData::skin_presets_pngSize},
-  {BinaryData::skin_settings_png,BinaryData::skin_settings_pngSize}
- }};
- for(size_t i=0;i<skins.size();i++)
-  skins[i]=juce::ImageCache::getFromMemory(skinsData[i].first,skinsData[i].second);
  search.setTextToShowWhenEmpty(juce::String::fromUTF8("Rechercher par nom, étiquette ou auteur..."),juce::Colours::grey);
  search.setColour(juce::TextEditor::backgroundColourId,juce::Colour(0xff0a111c));
  search.setColour(juce::TextEditor::textColourId,juce::Colour(0xffd6e0ec));
@@ -49,12 +34,6 @@ SerenityEditor::SerenityEditor(SerenityAudioProcessor& p):juce::AudioProcessorEd
  const int fittedH=(int)std::round(fittedW*canvasHeight/canvasWidth);
  setSize(fittedW,fittedH);
  startTimerHz(20);
-}
-bool SerenityEditor::hasTenOriginalScreens() const {
- for(const auto& sourceImage:skins)
-  if(sourceImage.isNull() || sourceImage.getWidth()!=2048 || sourceImage.getHeight()!=1361)
-   return false;
- return true;
 }
 void SerenityEditor::selectTabForSmokeTest(int index){
  tab=juce::jlimit(0,9,index);
@@ -271,25 +250,9 @@ void SerenityEditor::paintInteraction(juce::Graphics& g){
  }
 }
 void SerenityEditor::paint(juce::Graphics& g){
- g.fillAll(blue);
- if(!skins[(size_t)tab].isNull())
-  g.drawImageWithin(skins[(size_t)tab],0,0,getWidth(),getHeight(),juce::RectanglePlacement::stretchToFit);
- paintTop(g);
- // Translate prominent panel titles without reinterpreting or redesigning their geometry.
- paintTabTitle(g,0,279,120,"WAVETABLE · OSC A","WAVETABLE · OSC A",210);
- paintTabTitle(g,1,475,120,"WAVETABLE 3D · OSC A","3D WAVETABLE · OSC A",327);
- paintTabTitle(g,2,25,120,"RÉPONSE DES FILTRES","FILTER RESPONSE",286);
- paintTabTitle(g,3,25,120,"ENVELOPPES","ENVELOPES",166);
- paintTabTitle(g,4,21,164,"SATURATION","DRIVE",131);
- paintTabTitle(g,5,26,120,"ARPÉGIATEUR À PAS","STEP ARPEGGIATOR",310);
- paintTabTitle(g,6,25,120,"SÉQUENCEUR À PAS","STEP SEQUENCER",298);
- paintTabTitle(g,7,26,120,"MATRICE DE MODULATION","MODULATION MATRIX",270);
- if(tab==0)paintOscillators(g);
+ paintNativePage(g);
  if(tab==1)paintEditor(g);
- if(tab==7)paintMatrix(g);
- if(tab==5||tab==6)paintSequencer(g);
  if(tab==8)paintPresets(g);
- if(tab==9)paintSettings(g);
  paintInteraction(g);
 }
 std::vector<SerenityEditor::Hotspot> SerenityEditor::hotspots()const {
