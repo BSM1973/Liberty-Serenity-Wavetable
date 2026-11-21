@@ -19,7 +19,15 @@ const std::array<ParamSpec,parameterCount> specs={{
  {"macroBrightness",0,1,.5f},{"macroMovement",0,1,.5f},
  {"macroWarmth",0,1,.5f},{"macroSpace",0,1,.5f},
  {"macroWidth",0,1,.5f},{"macroTexture",0,1,.5f},
- {"macroEnergy",0,1,.5f},{"macroSerenity",0,1,.5f}
+ {"macroEnergy",0,1,.5f},{"macroSerenity",0,1,.5f},
+ {"oscAOctave",-3,3,0},{"oscBOctave",-3,3,0},{"oscCOctave",-3,3,0},{"oscDOctave",-3,3,0},
+ {"oscASemi",-12,12,0},{"oscBSemi",-12,12,0},{"oscCSemi",-12,12,0},{"oscDSemi",-12,12,0},
+ {"oscAFine",-100,100,0},{"oscBFine",-100,100,0},{"oscCFine",-100,100,0},{"oscDFine",-100,100,0},
+ {"oscAPan",-1,1,0},{"oscBPan",-1,1,0},{"oscCPan",-1,1,0},{"oscDPan",-1,1,0},
+ {"oscAWarp",-1,1,0},{"oscBWarp",-1,1,0},{"oscCWarp",-1,1,0},{"oscDWarp",-1,1,0},
+ {"oscAShape",0,1,0},{"oscBShape",0,1,0},{"oscCShape",0,1,0},{"oscDShape",0,1,0},
+ {"oscAWarpMode",0,3,0},{"oscBWarpMode",0,3,0},{"oscCWarpMode",0,3,0},{"oscDWarpMode",0,3,0},
+ {"oscAShapeMode",0,3,0},{"oscBShapeMode",0,3,0},{"oscCShapeMode",0,3,0},{"oscDShapeMode",0,3,0}
 }};
 }
 
@@ -28,7 +36,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SerenityAudioProcessor::crea
  p.reserve(serenity::parameterCount);
  for(int i=0;i<serenity::parameterCount;++i){
   const auto& s=serenity::specs[(size_t)i];
-  const bool discrete=(i>=serenity::oscAWave&&i<=serenity::polyphony)||i==serenity::filter2Enabled||i==serenity::filterRouting;
+  const bool discrete=(i>=serenity::oscAWave&&i<=serenity::polyphony)
+    ||i==serenity::filter2Enabled||i==serenity::filterRouting
+    ||(i>=serenity::oscAOctave&&i<=serenity::oscDSemi)
+    ||(i>=serenity::oscAWarpMode&&i<=serenity::oscDShapeMode);
   juce::NormalisableRange<float> r(s.lo,s.hi,discrete?1.0f:0.0001f);
   p.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{s.id,1},juce::String(s.id),r,s.initial));
  }
@@ -111,6 +122,14 @@ serenity::Params SerenityAudioProcessor::buildParams() const noexcept {
  for(int i=0;i<4;i++){
   p.oscLevel[i]=getValue(levels[i]);p.wave[i]=(int)std::round(getValue(waves[i]));
   p.unison[i]=(int)std::round(getValue(unis[i]));
+  p.oscOctave[i]=getValue(serenity::oscAOctave+i);
+  p.oscSemi[i]=getValue(serenity::oscASemi+i);
+  p.oscFine[i]=getValue(serenity::oscAFine+i);
+  p.oscPan[i]=getValue(serenity::oscAPan+i);
+  p.oscWarp[i]=getValue(serenity::oscAWarp+i);
+  p.oscShape[i]=getValue(serenity::oscAShape+i);
+  p.oscWarpMode[i]=(int)std::lround(getValue(serenity::oscAWarpMode+i));
+  p.oscShapeMode[i]=(int)std::lround(getValue(serenity::oscAShapeMode+i));
  }
  p.polyphony=(int)getValue(serenity::polyphony);
  // 8 macro parameters are host-automatable; map 4 useful defaults into DSP.
@@ -151,6 +170,35 @@ void SerenityAudioProcessor::setCustomPoint(int oscillator,int frame,int sample,
  customPoints[index].store(juce::jlimit(-1.f,1.f,value),std::memory_order_relaxed);
  // A drag writes to the editable raw frame. The GUI publishes the completed
  // anti-aliased spectrum on mouse release to avoid heavy FFT work per pixel.
+}
+
+float SerenityAudioProcessor::getWavetablePreviewPoint(int osc,int wave,int frame,int sample) const noexcept {
+ if(osc<0||osc>=serenity::editableOscillators||frame<0||
+    frame>=serenity::editableFrames||sample<0||sample>=serenity::editableSamples)return 0.f;
+ if(wave==serenity::waveCount)return getCustomPoint(osc,frame,sample);
+ if(wave<0||wave>=serenity::waveCount)return 0.f;
+ return engine.previewFactoryPoint(wave,frame,sample);
+}
+float SerenityAudioProcessor::getWavetablePreview(int osc,int wave,float position,
+                                                 float phase,bool transformed) const noexcept {
+ if(osc<0||osc>=serenity::editableOscillators||!std::isfinite(position)||!std::isfinite(phase))return 0.f;
+ if(transformed)
+  phase=serenity::oscillatorWarpPhase(phase,getValue(serenity::oscAWarp+osc),
+                                    (int)std::lround(getValue(serenity::oscAWarpMode+osc)));
+ phase-=std::floor(phase);
+ const float f=juce::jlimit(0.f,1.f,position)*7.f;
+ const int a=(int)f,b=std::min(7,a+1);
+ const float z=f-(float)a;
+ const float x=phase*serenity::editableSamples;
+ const int i=((int)x)&511,j=(i+1)&511;
+ const float blend=x-std::floor(x);
+ const float p0=juce::jmap(blend,
+   getWavetablePreviewPoint(osc,wave,a,i),getWavetablePreviewPoint(osc,wave,a,j));
+ const float p1=juce::jmap(blend,
+   getWavetablePreviewPoint(osc,wave,b,i),getWavetablePreviewPoint(osc,wave,b,j));
+ const float raw=juce::jmap(z,p0,p1);
+ return transformed ? serenity::oscillatorShape(raw,getValue(serenity::oscAShape+osc),
+                              (int)std::lround(getValue(serenity::oscAShapeMode+osc))):raw;
 }
 float SerenityAudioProcessor::getCustomPoint(int oscillator,int frame,int sample) const noexcept {
  if(oscillator<0||oscillator>=serenity::editableOscillators||
