@@ -361,6 +361,97 @@ void SerenityEditor::showParameterMenu(int index){
   if(selected==3){safe->synth.setValue(index,spec.initial);safe->repaint();}
  });
 }
+
+void SerenityEditor::rememberUndo(){
+ juce::MemoryBlock state;
+ synth.getStateInformation(state);
+ if(undoHistory.empty()||undoHistory.back()!=state){
+  undoHistory.push_back(std::move(state));
+  if(undoHistory.size()>32)undoHistory.erase(undoHistory.begin());
+ }
+ redoHistory.clear();
+}
+void SerenityEditor::undoChange(){
+ if(undoHistory.empty()){showStatus(tr("Aucune modification à annuler.","Nothing to undo."));return;}
+ juce::MemoryBlock current;
+ synth.getStateInformation(current);
+ redoHistory.push_back(std::move(current));
+ auto state=std::move(undoHistory.back());undoHistory.pop_back();
+ synth.setStateInformation(state.getData(),(int)state.getSize());
+ showStatus(tr("Modification annulée.","Change undone."));
+ repaint();
+}
+void SerenityEditor::redoChange(){
+ if(redoHistory.empty()){showStatus(tr("Aucune modification à rétablir.","Nothing to redo."));return;}
+ juce::MemoryBlock current;
+ synth.getStateInformation(current);
+ undoHistory.push_back(std::move(current));
+ auto state=std::move(redoHistory.back());redoHistory.pop_back();
+ synth.setStateInformation(state.getData(),(int)state.getSize());
+ showStatus(tr("Modification rétablie.","Change redone."));
+ repaint();
+}
+void SerenityEditor::switchAB(int target){
+ target=juce::jlimit(0,1,target);
+ if(target==activeAB)return;
+ juce::MemoryBlock current;
+ synth.getStateInformation(current);
+ abStates[(size_t)activeAB]=std::move(current);
+ if(abStates[(size_t)target].getSize()==0)
+  abStates[(size_t)target]=abStates[(size_t)activeAB];
+ synth.setStateInformation(abStates[(size_t)target].getData(),
+                            (int)abStates[(size_t)target].getSize());
+ activeAB=target;
+ undoHistory.clear();redoHistory.clear();
+ showStatus(juce::String("COMPARER ")+(activeAB==0?"A":"B"));
+ repaint();
+}
+void SerenityEditor::showWaveSelectMenu(int osc){
+ osc=juce::jlimit(0,3,osc);
+ selectedOsc=osc;
+ const char* names[]={"Classic","Analog Saw","Pulse Sweep","Hollow Square",
+  "Reso Saw","Vowel Choir","Spectral Peak","FM Bell","FM E-Piano",
+  "Metal","Organ","Reed","Phase Choir","Sync Sweep","Chaos FM","Crystal","Custom"};
+ juce::PopupMenu m;
+ m.addSectionHeader(tr("TABLE D'ONDE","WAVETABLE"));
+ const int chosen=(int)std::lround(synth.getValue(serenity::oscAWave+osc));
+ for(int i=0;i<=serenity::waveCount;i++)
+  m.addItem(i+1,names[i],true,i==chosen);
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ m.showMenuAsync(juce::PopupMenu::Options(),[safe,osc](int value){
+  if(!safe||value==0)return;
+  safe->rememberUndo();
+  safe->synth.setValue(serenity::oscAWave+osc,(float)(value-1));
+  safe->repaint();
+ });
+}
+void SerenityEditor::showOscTransformMenu(int osc,bool warp){
+ osc=juce::jlimit(0,3,osc);
+ juce::PopupMenu m;
+ m.addSectionHeader(warp?tr("MODE WARP","WARP MODE"):tr("MODE SHAPE","SHAPE MODE"));
+ const char* warpNames[]={"Off","Bend","PWM","Sync"};
+ const char* shapeNames[]={"Off","Saturate","Wavefold","Quantize"};
+ const int idx=(warp?serenity::oscAWarpMode:serenity::oscAShapeMode)+osc;
+ const int selected=(int)std::lround(synth.getValue(idx));
+ for(int i=0;i<4;i++)m.addItem(i+1,warp?warpNames[i]:shapeNames[i],true,i==selected);
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ m.showMenuAsync(juce::PopupMenu::Options(),[safe,idx](int value){
+  if(!safe||value==0)return;
+  safe->rememberUndo();
+  safe->synth.setValue(idx,(float)(value-1));
+  safe->repaint();
+ });
+}
+bool SerenityEditor::keyPressed(const juce::KeyPress& key){
+ const bool command=key.getModifiers().isCommandDown()||key.getModifiers().isCtrlDown();
+ const auto letter=juce::String::charToString(key.getTextCharacter()).toLowerCase();
+ if(command&&letter=="z"){
+  if(key.getModifiers().isShiftDown())redoChange();else undoChange();
+  return true;
+ }
+ if(command&&letter=="y"){redoChange();return true;}
+ return false;
+}
 void SerenityEditor::mouseDown(const juce::MouseEvent& e){
  auto p=logical(e.position);
  downPos=p;
