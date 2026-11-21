@@ -20,8 +20,11 @@ constexpr int frames=8, tableSize=512, mipCount=8;
 inline float clamp(float x,float a,float b) noexcept { return std::max(a,std::min(x,b)); }
 inline float mix(float a,float b,float t) noexcept {return a+(b-a)*t;}
 
-struct EnvelopeSettings { float delay=0,attack=.004f,hold=0,decay=.45f,sustain=.7f,release=.35f; };
-struct LfoSettings { float rate=5,phase=0; int shape=0; bool unipolar=false; };
+struct EnvelopeSettings { float delay=0,attack=.004f,hold=0,decay=.45f,sustain=.7f,release=.35f,curve=0,velocity=0; };
+struct LfoSettings { float rate=5,phase=0; int shape=0; bool unipolar=false; bool sync=false;int division=5;float smooth=0; };
+inline float envelopeCurve(float x,float curve) noexcept {x=clamp(x,0.f,1.f);return curve>=0.f?mix(x,x*x,curve):mix(x,1.f-(1.f-x)*(1.f-x),-curve);}
+inline constexpr std::array<float,12> lfoBeats{{4.f,2.f,1.5f,1.f,2.f/3.f,.5f,.375f,1.f/3.f,.25f,1.f/6.f,.125f,.0625f}};
+inline float lfoFrequency(const LfoSettings& f,float rate,float bpm) noexcept {return f.sync?clamp(bpm,20.f,400.f)/(60.f*lfoBeats[(size_t)std::max(0,std::min(11,f.division))]):rate;}
 inline float lfoWave(float phase,int shape) noexcept {
  phase-=std::floor(phase);
  switch(shape){case 1:return 1.f-4.f*std::abs(phase-.5f);case 2:return 2.f*phase-1.f;case 3:return phase<.5f?1.f:-1.f;case 4:return 1.f-2.f*phase;default:return std::sin(2*pi*phase);}
@@ -41,13 +44,16 @@ struct Params {
  float oscBlend[4]{},oscPhase[4]{},oscRandPhase[4]{};
  float fmBA=0,fmCA=0,fmCB=0,ringAmount=0;
  int fmMode=0,ringMode=0;
- float envDelay=0,envHold=0;
+ float envDelay=0,envHold=0,envCurve=0,envVelocity=0;
  std::array<EnvelopeSettings,5> modEnv{};
  std::array<LfoSettings,8> lfos{{{5,0,0,false},{5.9f,0,0,false},{6.8f,0,0,false},{7.7f,0,0,false},{8.6f,0,0,false},{9.5f,0,0,false},{10.4f,0,0,false},{11.3f,0,0,false}}};
  float delayTime=.38f,delayFeedback=.35f,delayTone=1,reverbFeedback=.76f,masterWidth=1;
  float tremRate=3,tremDepth=0,fxRingFreq=120,fxRingMix=0;
  int tremMode=0;
- EnvelopeSettings amplitude() const noexcept {return {envDelay,attack,envHold,decay,sustain,release};}
+ int modFxType=0;float modFxRate=.6f,modFxDepth=.5f,modFxFeedback=0,modFxMix=0;
+ float eqLowGain=0,eqLowFreq=120,eqMidGain=0,eqMidFreq=1000,eqMidQ=1,eqHighGain=0,eqHighFreq=6000;
+ float compThreshold=-18,compRatio=4,compAttack=.015f,compRelease=.15f,compMakeup=0,compMix=0;
+ EnvelopeSettings amplitude() const noexcept {return {envDelay,attack,envHold,decay,sustain,release,envCurve,envVelocity};}
  int oscWarpMode[4]{},oscShapeMode[4]{};
  int wave[4]={1,0,3,0};
  int unison[4]={1,1,1,1};
@@ -128,24 +134,45 @@ public:
 
 struct Envelope {
  enum Stage { idle, delay, attack, hold, decay, sustain, release } stage=idle;
- float value=0,releaseStep=0,elapsed=0;
- void on() noexcept {stage=delay;elapsed=0; if(value<0.0001f)value=0;}
- void off(float seconds,float sr) noexcept {stage=release; releaseStep=value/(std::max(.001f,seconds)*sr);}
- float next(const EnvelopeSettings &p,float sr) noexcept {
-  // Zero delay/hold preserve the original ADSR timing.
-  if(stage==delay){if(elapsed<p.delay){elapsed+=1.f/sr;return 0.f;}stage=attack;}
-  if(stage==hold){if(elapsed<p.hold){elapsed+=1.f/sr;return 1.f;}stage=decay;}
-  switch(stage) {
-   case idle: return 0;
-   case delay: case hold: break;
-   case attack: value+=1.f/(std::max(.001f,p.attack)*sr);if(value>=1){value=1;stage=hold;elapsed=0;}break;
-   case decay: value-=(1-p.sustain)/(std::max(.001f,p.decay)*sr);if(value<=p.sustain){value=p.sustain;stage=sustain;}break;
-   case sustain: value=p.sustain;break;
-   case release: value-=releaseStep;if(value<=0){value=0;stage=idle;}break;
+ float value=0,elapsed=0,origin=0,releaseSeconds=.35f;
+ void on() noexcept {stage=delay;elapsed=0;origin=value;if(value<.0001f)origin=value=0;}
+ void off(float seconds,float) noexcept {stage=release;origin=value;elapsed=0;releaseSeconds=std::max(.001f,seconds);}
+ float next(const EnvelopeSettings& p,float sr) noexcept {
+  const float dt=1.f/sr;
+  if(stage==delay){if(elapsed<p.delay){elapsed+=dt;value=0;origin=0;return 0;}stage=attack;elapsed=0;}
+  if(stage==hold){if(elapsed<p.hold){elapsed+=dt;return 1;}stage=decay;elapsed=0;}
+  switch(stage){
+   case idle:return 0;
+   case delay:case hold:break;
+   case attack:{elapsed+=dt;float q=clamp(elapsed/std::max(.001f,p.attack),0.f,1.f);value=mix(origin,1.f,envelopeCurve(q,p.curve));if(q>=1.f){value=1;stage=hold;elapsed=0;}break;}
+   case decay:{elapsed+=dt;float q=clamp(elapsed/std::max(.001f,p.decay),0.f,1.f);value=mix(1.f,p.sustain,envelopeCurve(q,p.curve));if(q>=1.f){value=p.sustain;stage=sustain;}break;}
+   case sustain:value=p.sustain;break;
+   case release:{elapsed+=dt;float q=clamp(elapsed/releaseSeconds,0.f,1.f);value=origin*(1.f-envelopeCurve(q,p.curve));if(q>=1.f){value=0;stage=idle;}break;}
   }
-  return clamp(value,0,1);
+  return clamp(value,0.f,1.f);
  }
 };
+// RBJ equalizer, transposed direct form II; coefficients calculated outside the sample loop.
+struct EqCoefficients {float b0=1,b1=0,b2=0,a1=0,a2=0;};
+inline EqCoefficients eqCoefficients(int type,float freq,float db,float q,float sr) noexcept {
+ if(std::abs(db)<.00001f)return {};
+ const float A=std::pow(10.f,db/40.f),omega=2*pi*clamp(freq,10.f,sr*.45f)/sr;
+ const float c=std::cos(omega),sin=std::sin(omega);
+ float b0,b1,b2,a0,a1,a2;
+ if(type==1){float alpha=sin/(2.f*clamp(q,.3f,8.f));b0=1+alpha*A;b1=-2*c;b2=1-alpha*A;a0=1+alpha/A;a1=-2*c;a2=1-alpha/A;}
+ else {const float alpha=sin*.70710678f,beta=2.f*std::sqrt(A)*alpha;
+  if(type==0){b0=A*((A+1)-(A-1)*c+beta);b1=2*A*((A-1)-(A+1)*c);b2=A*((A+1)-(A-1)*c-beta);a0=(A+1)+(A-1)*c+beta;a1=-2*((A-1)+(A+1)*c);a2=(A+1)+(A-1)*c-beta;}
+  else{b0=A*((A+1)+(A-1)*c+beta);b1=-2*A*((A-1)+(A+1)*c);b2=A*((A+1)+(A-1)*c-beta);a0=(A+1)-(A-1)*c+beta;a1=2*((A-1)-(A+1)*c);a2=(A+1)-(A-1)*c-beta;}
+ }
+ return {b0/a0,b1/a0,b2/a0,a1/a0,a2/a0};
+}
+inline float eqMagnitude(const EqCoefficients& k,float freq,float sr) noexcept {
+ const float w=2*pi*freq/sr,c=std::cos(w),c2=std::cos(2*w),si=std::sin(w),s2=std::sin(2*w);
+ const float nr=k.b0+k.b1*c+k.b2*c2,ni=k.b1*si+k.b2*s2,dr=1+k.a1*c+k.a2*c2,di=k.a1*si+k.a2*s2;
+ return std::sqrt((nr*nr+ni*ni)/std::max(1.e-16f,dr*dr+di*di));
+}
+struct EqState {float z1=0,z2=0;float tick(float x,const EqCoefficients& c) noexcept {float y=c.b0*x+z1;z1=c.b1*x-c.a1*y+z2;z2=c.b2*x-c.a2*y;return y;}};
+inline float compressorGainDb(float level,float threshold,float ratio) noexcept {return -std::max(0.f,level-threshold)*(1.f-1.f/std::max(1.f,ratio));}
 struct Voice {
  int note=-1;bool active=false;
  float velocity=0,stepGate=0,filterL=0,filterR=0,filter2L=0,filter2R=0;
@@ -186,7 +213,35 @@ class Engine {
  std::array<Voice,maxVoices> voices{};
  std::array<ModRoute,64> routes{};
  float sr=48000,modWheel=0;
- std::array<float,8> lfoPhases{};
+ std::array<float,8> lfoPhases{},lfoSmooth{};
+ float hostTempo=120,modFxPhase=0,compGain=1,compAtk=0,compRel=0,compMakeupGain=1;
+ std::array<EqCoefficients,3> eqCoeffs{};
+ std::array<std::array<EqState,3>,2> eqState{};
+ std::array<std::array<float,6>,2> phaserState{};
+ std::array<float,2> phaserFeedback{};
+ std::array<std::vector<float>,2> modDelay;
+ size_t modIndex=0;
+ void modulationFx(float& l,float& r) noexcept {
+  if(modDelay[0].empty())return;
+  const float wet=clamp(p.modFxMix,0.f,1.f),depth=clamp(p.modFxDepth,0.f,1.f),fb=clamp(p.modFxFeedback,-.85f,.85f);
+  float* ch[]={&l,&r};
+  for(size_t k=0;k<2;k++){
+   const float x=*ch[k],lf=.5f+.5f*std::sin(2*pi*(modFxPhase+(k==0?0.f:.25f)));
+   float y=x;auto& buf=modDelay[k];const size_t len=buf.size();
+   if(p.modFxType==2){const float f=200.f+depth*lf*3200.f;const float g=std::tan(pi*clamp(f,20.f,sr*.4f)/sr),coef=(1.f-g)/(1.f+g);
+    y=x+fb*phaserFeedback[k];for(float& z:phaserState[k]){float v=-coef*y+z;z=y+coef*v;y=v;}phaserFeedback[k]=y;
+   }else{float off=sr*(p.modFxType==0?(.012f+.014f*depth*lf):(.0007f+.007f*depth*lf));size_t whole=(size_t)off,rd=(modIndex+len-whole%len)%len;
+    y=mix(buf[rd],buf[(rd+len-1)%len],off-(float)whole);}
+   buf[modIndex]=x+(p.modFxType==2?0.f:fb*y);*ch[k]=mix(x,.5f*(x+y),wet);
+  }
+  modIndex=(modIndex+1)%modDelay[0].size();modFxPhase+=p.modFxRate/sr;modFxPhase-=std::floor(modFxPhase);
+ }
+ void equalizeCompress(float& l,float& r) noexcept {
+  float* ch[]={&l,&r};for(size_t k=0;k<2;k++)for(size_t j=0;j<3;j++)*ch[k]=eqState[k][j].tick(*ch[k],eqCoeffs[j]);
+  if(p.compMix>0.f){const float peak=std::max(std::abs(l),std::abs(r));float db=20.f*std::log10(std::max(peak,1.e-9f));float target=std::pow(10.f,compressorGainDb(db,p.compThreshold,p.compRatio)/20.f);
+   compGain=target+(compGain-target)*(target<compGain?compAtk:compRel);float g=mix(1.f,compGain*compMakeupGain,p.compMix);l*=g;r*=g;}
+  else compGain=1.f;
+ }
  float tremPhase=0,ringPhase=0,delaySmoothed=.38f,delayToneL=0,delayToneR=0;
  StepClock sequence;
  int lastSequenceIndex=-1;
@@ -223,10 +278,15 @@ public:
   delayL.assign((size_t)(sr*2.0f)+1,0);delayR=delayL;
   reverbL.assign((size_t)(sr*.173f)+1,0);reverbR.assign((size_t)(sr*.193f)+1,0);
   delayIndex=reverbIndex=0;
-  reset();
+  for(auto& buf:modDelay)buf.assign((size_t)(sr*.04f)+4,0.f);
+  reset();setParams(p);
  }
- void reset() noexcept {for(auto &v:voices)v=Voice{};lfoPhases.fill(0.f);tremPhase=ringPhase=0;delayToneL=delayToneR=0;delaySmoothed=p.delayTime;activeCount=0;sequence.reset();lastSequenceIndex=-1;}
- void setParams(const Params &next) noexcept {p=next;p.polyphony=std::max(1,std::min(p.polyphony,maxVoices));}
+ void reset() noexcept {for(auto &v:voices)v=Voice{};lfoPhases.fill(0.f);lfoSmooth.fill(0.f);modFxPhase=0;modIndex=0;eqState={};phaserState={};phaserFeedback={};compGain=1;for(auto& buf:modDelay)std::fill(buf.begin(),buf.end(),0.f);tremPhase=ringPhase=0;delayToneL=delayToneR=0;delaySmoothed=p.delayTime;activeCount=0;sequence.reset();lastSequenceIndex=-1;}
+ void setParams(const Params &next) noexcept {p=next;p.polyphony=std::max(1,std::min(p.polyphony,maxVoices));
+  eqCoeffs={eqCoefficients(0,p.eqLowFreq,p.eqLowGain,1.f,sr),eqCoefficients(1,p.eqMidFreq,p.eqMidGain,p.eqMidQ,sr),eqCoefficients(2,p.eqHighFreq,p.eqHighGain,1.f,sr)};
+  compAtk=std::exp(-1.f/(sr*std::max(.001f,p.compAttack)));compRel=std::exp(-1.f/(sr*std::max(.02f,p.compRelease)));compMakeupGain=std::pow(10.f,p.compMakeup/20.f);
+ }
+ void setHostTempo(float bpm) noexcept {hostTempo=std::isfinite(bpm)?clamp(bpm,20.f,400.f):120.f;}
  void setModWheel(float value) noexcept {modWheel=clamp(value,0,1);}
  void setSequence(const SequencePattern& pattern) noexcept {
   if(pattern.mode==0)lastSequenceIndex=-1;
@@ -259,8 +319,9 @@ public:
    for(size_t k=0;k<lfos.size();k++){
     const auto& cfg=p.lfos[k];float& ph=lfoPhases[k];
     float x=lfoWave(ph+cfg.phase,cfg.shape);
+    if(cfg.smooth>0.f){lfoSmooth[k]+=(x-lfoSmooth[k])*clamp(1.f/(sr*(.0001f+cfg.smooth*.08f)),0.f,1.f);x=lfoSmooth[k];}else lfoSmooth[k]=x;
     lfos[k]=cfg.unipolar?.5f*(x+1.f):x;
-    ph+=(k==0?p.lfoRate:cfg.rate)/sr;ph-=std::floor(ph);
+    ph+=lfoFrequency(cfg,k==0?p.lfoRate:cfg.rate,hostTempo)/sr;ph-=std::floor(ph);
    }
    const float lfo=lfos[0];
    int countActive=0;
@@ -269,7 +330,7 @@ public:
     // Retrigger the envelope on every played step without reallocating voices.
     if(retrigger){v.amp.on();for(auto &envelope:v.envelopes)envelope.on();}
     const auto ampSettings=p.amplitude();
-    float env=v.amp.next(ampSettings,sr);
+    float env=v.amp.next(ampSettings,sr)*mix(1.f,v.velocity,ampSettings.velocity);
     // Keep voice allocation intact while steps gate/retrigger the held note.
     // Short smoothing avoids clicks at step/rest boundaries.
     v.stepGate+=(seq.gate-v.stepGate)*clamp(1.f/(sr*.003f),0.f,1.f);
@@ -277,7 +338,7 @@ public:
     countActive++;
     std::array<float,6> envs{};
     envs[0]=env;
-    for(size_t k=1;k<envs.size();k++)envs[k]=v.envelopes[k].next(p.modEnv[k-1],sr);
+    for(size_t k=1;k<envs.size();k++){const auto& cfg=p.modEnv[k-1];envs[k]=v.envelopes[k].next(cfg,sr)*mix(1.f,v.velocity,cfg.velocity);}
     float pitchMod=0,frameMod=0,filterMod=0,volumeMod=0,panMod=0;
     for(const auto &route:routes){
      if(route.source<0||route.destination<0||route.amount==0)continue;
@@ -353,6 +414,7 @@ public:
    // Soft saturation.
    float gain=1.f+p.drive*7.f;
    l=std::tanh(l*gain)*.7f;r=std::tanh(r*gain)*.7f;
+   equalizeCompress(l,r);modulationFx(l,r);
    if(!delayL.empty()){
     const size_t len=delayL.size();
     delaySmoothed+=(clamp(p.delayTime,.02f,1.9f)-delaySmoothed)*.002f;

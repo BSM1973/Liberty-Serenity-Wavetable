@@ -270,11 +270,16 @@ std::vector<SerenityEditor::Hotspot> SerenityEditor::hotspots()const {
   case 3:{
    const float x[]={60,151,240,332,421,513};for(int k=0;k<6;k++)hs.push_back({x[k],582,24,envParameter(selectedEnv,k)});
    hs.push_back({803,639,24,lfoParameter(selectedLfo,0)});hs.push_back({893,639,24,lfoParameter(selectedLfo,2)});
+   hs.push_back({603,582,24,env1Curve+2*selectedEnv});hs.push_back({693,582,24,env1Velocity+2*selectedEnv});
+   hs.push_back({1074,639,24,lfo1Smooth+3*selectedLfo});
    if(selectedLfo==0)hs.push_back({985,639,24,lfoDepth});break;}
   case 4: hs.insert(hs.end(),{{77,325,24,drive},{351,325,24,cutoff},{419,325,24,resonance},
    {585,547,24,tremRate},{651,547,24,tremDepth},{773,546,24,fxRingFreq},{841,546,24,fxRingMix},
    {955,546,24,delayTime},{1021,546,24,delayFeedback},{1086,546,24,delayTone},{1153,546,24,delayMix},
-   {51,779,24,reverbFeedback},{429,779,24,reverbMix},{1315,547,24,master},{1398,547,24,masterWidth}});break;
+   {51,779,24,reverbFeedback},{429,779,24,reverbMix},{1315,547,24,master},{1398,547,24,masterWidth}});
+   for(int k=0;k<7;k++)hs.push_back({600.f+k*65.5f,325,23,eqLowGain+k});
+   for(int k=0;k<6;k++)hs.push_back({1100.f+k*65.f,325,23,compThreshold+k});
+   for(int k=0;k<4;k++)hs.push_back({58.f+k*66.f,548,23,modFxRate+k});break;
   case 9:hs.insert(hs.end(),{{88,215,30,master},{378,215,31,cutoff},{519,215,30,master}});break;
   default:break;
  }
@@ -487,8 +492,12 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   if(p.y>=156&&p.y<=188){if(p.x>=22&&p.x<724){selectedEnv=juce::jlimit(0,5,(int)((p.x-22)/117));repaint();return;}
    if(p.x>=766&&p.x<1470){selectedLfo=juce::jlimit(0,7,(int)((p.x-766)/88));repaint();return;}}
   if(p.x>=767&&p.x<=942&&p.y>=568&&p.y<=600){showChoiceMenu(serenity::lfoParameter(selectedLfo,1),{"Sine","Triangle","Saw Up","Square","Saw Down"});return;}
+  if(p.x>=1103&&p.x<=1248&&p.y>=568&&p.y<=600){showChoiceMenu(serenity::lfo1Division+3*selectedLfo,{"1/1","1/2","1/4 D","1/4","1/4 T","1/8","1/16 D","1/8 T","1/16","1/16 T","1/32","1/64"});return;}
+  if(p.x>=953&&p.x<=1090&&p.y>=568&&p.y<=600){showChoiceMenu(serenity::lfo1Sync+3*selectedLfo,{"Free","Tempo"});return;}
+  if(p.x>=1275&&p.x<=1351&&p.y>=570&&p.y<=596){int id=serenity::lfo1Sync+3*selectedLfo;rememberUndo();synth.setValue(id,synth.getValue(id)>.5f?0.f:1.f);repaint();return;}
   if(p.x>=1364&&p.x<=1474&&p.y>=570&&p.y<=596){const int id=serenity::lfoParameter(selectedLfo,3);rememberUndo();synth.setValue(id,synth.getValue(id)>.5f?0.f:1.f);repaint();return;}
  }
+ if(tab==4&&p.x>=23&&p.x<=287&&p.y>=510&&p.y<=542){showChoiceMenu(serenity::modFxType,{"Chorus","Flanger","Phaser"});return;}
  if(tab==4&&p.y>=427&&p.y<=458&&p.x>=323&&p.x<=507){rememberUndo();synth.setValue(serenity::tremMode,p.x>=416?1.f:0.f);repaint();return;}
  if(tab==0&&p.y>=120&&p.y<151&&p.x>=801&&p.x<942){
   selectedOsc=juce::jlimit(0,3,(int)((p.x-801)/35.f));

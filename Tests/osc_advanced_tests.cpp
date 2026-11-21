@@ -67,6 +67,18 @@ int main() {
  p.lfos[1].shape=3;
  assert(difference(sineMod,render(p))>.01);
  e.route(0)={};
- std::cout<<"PASS: oscillator phase, FM, ring, DAHDSR, LFO shapes and effect processing\n";
+ p.lfos[1].shape=0;
+ const auto dry=render(p);
+ p.envCurve=.9f;assert(difference(dry,render(p))>.01);p.envCurve=0;
+ LfoSettings sync;sync.sync=true;sync.division=5;
+ assert(std::abs(lfoFrequency(sync,5,120)-4.f)<.001f);
+ assert(std::abs(lfoFrequency(sync,5,90)-3.f)<.001f);
+ p.eqLowGain=12;assert(difference(dry,render(p))>.01);p.eqLowGain=0;
+ p.eqMidGain=-12;assert(difference(dry,render(p))>.01);p.eqMidGain=0;
+ p.eqHighGain=12;assert(difference(dry,render(p))>.01);p.eqHighGain=0;
+ p.compMix=1;p.compThreshold=-48;assert(difference(dry,render(p))>.01);p.compMix=0;
+ for(int type=0;type<3;type++){p.modFxType=type;p.modFxMix=1;assert(difference(dry,render(p))>.01);}
+ p.modFxMix=0;
+ std::cout<<"PASS: curved envelopes, tempo divisions, EQ, compressor and stereo modulation FX\n";
  return 0;
 }
