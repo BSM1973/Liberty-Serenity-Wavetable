@@ -375,20 +375,26 @@ void Painter::footer() {
  tx("OSCILLOSCOPE",1184,863,302,21,11,MUTE,true);
  grid(882,886,289,77,6,3);
  grid(1186,886,287,77,6,3);
- // Spectrum and scope are vector paths; they are not pixels from the screenshots.
+ // Both plots reflect actual audio samples, not decorative sine animations.
+ serenity::spectral::Frame samples{};
+ for(int i=0;i<256;i++)samples[(size_t)i]=dsp.getOutputScopeSample(i);
+ const auto fft=serenity::spectral::analyzeBins(samples);
  juce::Path spectrum,scope;
- const float levelValue=dsp.getOutputLevel();
- for(int i=0;i<=140;i++) {
+ for(int i=0;i<=140;i++){
   const float t=(float)i/140.f;
-  const float amp=std::exp(-3.7f*t)*(0.55f+.40f*std::sin(25.f*t)*std::sin(39.f*t));
-  const float sx=884+285*t,sy=962-(amp*56.f*levelValue);
+  const int bin=juce::jlimit(1,255,1+(int)(t*t*254.f));
+  const float magnitude=std::abs(fft[(size_t)bin])/128.f;
+  const float amp=clamp(std::log1p(magnitude*50.f)/4.f);
+  const float sx=884+285*t,sy=960.f-amp*66.f;
   if(i==0)spectrum.startNewSubPath(sx,sy);else spectrum.lineTo(sx,sy);
-  const float wx=1188+283*t,wy=925-23.f*levelValue*std::sin(14.f*pi*t);
+  const int sampleIndex=juce::jlimit(0,255,(int)(t*255.f));
+  const float realSample=dsp.getOutputScopeSample(sampleIndex);
+  const float wx=1188.f+283.f*t,wy=924.f-realSample*29.f;
   if(i==0)scope.startNewSubPath(wx,wy);else scope.lineTo(wx,wy);
  }
- g.setColour(c(CYAN).withAlpha(.8f));
- g.strokePath(spectrum,juce::PathStrokeType(1.3f));
- g.strokePath(scope,juce::PathStrokeType(1.5f));
+ g.setColour(c(CYAN).withAlpha(.9f));
+ g.strokePath(spectrum,juce::PathStrokeType(1.5f));
+ g.strokePath(scope,juce::PathStrokeType(1.6f));
 }
 
 
