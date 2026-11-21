@@ -55,7 +55,8 @@ private:
  void paintMatrix(juce::Graphics&);
  void paintOscillators(juce::Graphics&);
  void showWavetableMenu();
- void importWavetableAudio();
+ void importWavetableAudio(int oscillator);
+ void chooseWavetableFile(int oscillator,int cycleLength);
  void drawCustomPoint(juce::Point<float> p);
  void drawCustomHarmonic(juce::Point<float> p);
  void paintSequencer(juce::Graphics&);

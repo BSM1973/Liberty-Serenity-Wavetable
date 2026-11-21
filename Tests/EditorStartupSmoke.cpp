@@ -83,6 +83,20 @@ int main(){
   customEnergy+=value*value;
  }
  if(customEnergy<1.e-9)return 24;
+ // Real WAV decoder, import and persistent state.
+ juce::TemporaryFile importFile(".wav");
+ juce::MemoryOutputStream wave;
+ constexpr int cycle=2048,sourceFrames=4,total=cycle*sourceFrames;
+ wave.write("RIFF",4);wave.writeInt(36+total*2);wave.write("WAVEfmt ",8);wave.writeInt(16);
+ wave.writeShort(1);wave.writeShort(1);wave.writeInt(44100);wave.writeInt(88200);wave.writeShort(2);wave.writeShort(16);
+ wave.write("data",4);wave.writeInt(total*2);
+ for(int f=0;f<sourceFrames;f++)for(int i=0;i<cycle;i++)
+  wave.writeShort((short)std::lround(32767.f*(.2f+.2f*f)*std::sin(6.2831853071795864769f*i/cycle)));
+ if(!importFile.getFile().replaceWithData(wave.getData(),wave.getDataSize()))return 40;
+ if(processor.importWavetableFile(importFile.getFile(),3,1000).wasOk())return 41;
+ auto imported=processor.importWavetableFile(importFile.getFile(),3,cycle);
+ if(imported.failed()){std::cerr<<imported.getErrorMessage()<<std::endl;return 42;}
+ if(std::abs(processor.getCustomPoint(3,0,128)-.2f)>.005f||std::abs(processor.getCustomPoint(3,7,128)-.8f)>.005f||std::abs(processor.getCustomPoint(3,3,128)-(.2f+.6f*3.f/7.f))>.005f||processor.getValue(serenity::oscDWave)!=serenity::waveCount)return 43;
  // Verify all 64 steps in all four banks can survive AU/VST3 project state roundtrips.
  processor.setSequenceMode(2);
  processor.setSequenceBank(3);
@@ -92,6 +106,7 @@ int main(){
  processor.getStateInformation(savedState);
  SerenityAudioProcessor restored;
  restored.setStateInformation(savedState.getData(),(int)savedState.getSize());
+ if(std::abs(restored.getCustomPoint(3,7,128)-.8f)>.005f||restored.getValue(serenity::oscDWave)!=serenity::waveCount)return 44;
  const auto last=restored.getSequenceStep(3,63);
  if(restored.getSequenceBank()!=3 || restored.getSequenceLength()!=64 ||
     restored.getSequenceMode()!=2 || last.pitch!=-17 ||

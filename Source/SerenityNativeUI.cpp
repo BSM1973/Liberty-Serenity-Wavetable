@@ -659,8 +659,11 @@ void Painter::editor(){
  }
  line(23,592,425,592,STROKE);
  tx(juce::String(selectedWave+1).paddedLeft('0',2),22,601,43,29,17,CYAN,true);
- tx(selectedWave==16?"Custom":waves[selectedWave],56,601,254,29,17,TYPE,true);
+ tx(selectedWave==16?tr("Custom","Personnelle"):u(waves[selectedWave]),56,601,254,29,17,TYPE,true);
  button(321,604,103,28,("OSC "+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8(),true,CYAN);
+ button(23,648,203,36,tr("IMPORT WAV / AIFF","IMPORTER WAV / AIFF").toRawUTF8(),false,GOLD);
+ button(236,648,188,36,tr("CUSTOM TABLE","TABLE PERSONNELLE").toRawUTF8(),selectedWave==serenity::waveCount,PURPLE);
+ tx(tr("Select source cycle size before import.","Choisir la taille du cycle avant import."),23,690,400,20,11,MUTE);
  tx("8 FRAMES · 512 SAMPLES PER FRAME",23,727,388,22,11,MUTE,true);
  tx("BAND-LIMITED IN 9 SPECTRAL LEVELS",23,748,390,22,11,MUTE);
  panel(446,118,701,723,

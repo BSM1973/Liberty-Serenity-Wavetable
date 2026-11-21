@@ -476,6 +476,27 @@ void SerenityAudioProcessor::commitCustomFrame(int oscillator,int frame,
  }
  rebuildCustomFrame(oscillator,frame);
 }
+juce::Result SerenityAudioProcessor::importWavetableFile(const juce::File& file,int osc,int cycleLength){
+ auto error=[&](const char* en,const char* fr){return juce::Result::fail(juce::String::fromUTF8(french()?fr:en));};
+ if(osc<0||osc>=serenity::editableOscillators)return error("Invalid oscillator.","Oscillateur invalide.");
+ juce::AudioFormatManager manager;manager.registerBasicFormats();
+ std::unique_ptr<juce::AudioFormatReader> reader(manager.createReaderFor(file));
+ if(!reader||reader->lengthInSamples<2)return error("Unreadable audio file.","Fichier audio illisible.");
+ if(reader->lengthInSamples>2000000)return error("File exceeds 2 million samples.","Fichier : plus de 2 millions d'échantillons.");
+ const int count=(int)reader->lengthInSamples,channels=(int)reader->numChannels;
+ if(channels<1||channels>2)return error("Only mono or stereo files.","Fichiers mono ou stéréo uniquement.");
+ if(cycleLength==0)cycleLength=count;
+ if(cycleLength<2||count%cycleLength!=0)return error("File length does not match cycle size.","Longueur incompatible avec la taille du cycle.");
+ juce::AudioBuffer<float> source(channels,count);
+ if(!reader->read(&source,0,count,0,true,channels==2))return error("Audio read failed.","Échec de lecture audio.");
+ std::vector<float> mono((size_t)count);
+ for(int i=0;i<count;i++)mono[(size_t)i]=channels==2?.5f*(source.getSample(0,i)+source.getSample(1,i)):source.getSample(0,i);
+ serenity::ImportedWavetable data{};
+ if(!serenity::convertWavetable(mono.data(),count,cycleLength,data))return error("Invalid waveform samples.","Échantillons de forme d'onde invalides.");
+ for(int f=0;f<serenity::editableFrames;f++)commitCustomFrame(osc,f,data[(size_t)f]);
+ setValue(serenity::oscAWave+osc,(float)serenity::waveCount);
+ return juce::Result::ok();
+}
 void SerenityAudioProcessor::normalizeCustomFrame(int oscillator,int frame) noexcept {
  if(oscillator<0||oscillator>=serenity::editableOscillators||frame<0||frame>=serenity::editableFrames)return;
  std::array<float,serenity::editableSamples> points{};

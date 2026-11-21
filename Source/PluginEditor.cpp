@@ -546,6 +546,8 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
              (enabled?" OFF":" ON"));return;
  }
  if(tab==1){
+  if(p.x>=23&&p.x<=226&&p.y>=648&&p.y<=684){importWavetableAudio(selectedOsc);return;}
+  if(p.x>=236&&p.x<=424&&p.y>=648&&p.y<=684){rememberUndo();synth.setValue(serenity::oscAWave+selectedOsc,(float)serenity::waveCount);repaint();return;}
   if(p.x>=570&&p.x<=726&&p.y>=718&&p.y<=754){
    showOscTransformMenu(selectedOsc,true);return;
   }
@@ -954,63 +956,38 @@ void SerenityEditor::drawCustomPoint(juce::Point<float> p){
  repaint();
 }
 
-void SerenityEditor::importWavetableAudio(){
- fileChooser=std::make_unique<juce::FileChooser>(
-  tr("Importer un fichier WAV dans la table","Import WAV into wavetable"),
-  juce::File{},"*.wav");
+void SerenityEditor::importWavetableAudio(int osc){
+ juce::PopupMenu choices;
+ choices.addSectionHeader(tr("TAILLE DU CYCLE SOURCE","SOURCE CYCLE LENGTH"));
+ choices.addItem(1,tr("Un seul cycle : fichier entier","Single cycle: whole file"));
+ for(int n:{256,512,1024,2048,4096})choices.addItem(n,juce::String(n)+tr(" échantillons par cycle"," samples per cycle"));
  juce::Component::SafePointer<SerenityEditor> safe(this);
- const int osc=selectedOsc;
- fileChooser->launchAsync(juce::FileBrowserComponent::openMode|
-                          juce::FileBrowserComponent::canSelectFiles,
-  [safe,osc](const juce::FileChooser& chooser){
-   if(!safe)return;
-   const auto file=chooser.getResult();
-   if(file==juce::File{})return;
-   juce::AudioFormatManager manager;manager.registerBasicFormats();
-   std::unique_ptr<juce::AudioFormatReader> reader(manager.createReaderFor(file));
-   if(!reader||reader->lengthInSamples<2){
-    safe->showStatus(safe->tr("Import WAV impossible.","Cannot import WAV."));return;
-   }
-   // Fixed memory limit for untrusted large samples; this is UI-thread work.
-   const int count=(int)juce::jmin((juce::int64)2000000,reader->lengthInSamples);
-   juce::AudioBuffer<float> source(2,count);
-   source.clear();
-   if(!reader->read(&source,0,count,0,true,true)){
-    safe->showStatus(safe->tr("Échec de la lecture WAV.","WAV read failed."));return;
-   }
-   const int sourceChannels=juce::jlimit(1,2,(int)reader->numChannels);
-   std::array<float,serenity::editableSamples> points{};
-   for(int frame=0;frame<serenity::editableFrames;frame++){
-    const bool separate=count>=serenity::editableFrames*serenity::editableSamples;
-    const int segmentLength=separate?(count/serenity::editableFrames):count;
-    const int segmentStart=separate?frame*segmentLength:0;
-    for(int i=0;i<serenity::editableSamples;i++){
-     const double offset=(double)i*(segmentLength-1)/(serenity::editableSamples-1);
-     const int a=segmentStart+(int)offset;
-     const int b=std::min(segmentStart+segmentLength-1,a+1);
-     const float blend=(float)(offset-std::floor(offset));
-     const float left=source.getSample(0,a)*(1.f-blend)+source.getSample(0,b)*blend;
-     float value=left;
-     if(sourceChannels>=2){
-      const float right=source.getSample(1,a)*(1.f-blend)+source.getSample(1,b)*blend;
-      value=.5f*(left+right);
-     }
-     points[(size_t)i]=juce::jlimit(-1.f,1.f,value);
-    }
-    safe->synth.commitCustomFrame(osc,frame,points);
-   }
-   safe->synth.setValue(serenity::oscAWave+osc,(float)serenity::waveCount);
-   safe->customEditorTouched=true;
-   safe->showStatus(safe->tr("WAV importé : 8 images éditables.",
-                             "WAV imported: 8 editable frames."));
-   safe->repaint();
-  });
+ choices.showMenuAsync(juce::PopupMenu::Options(),[safe,osc](int choice){
+  if(safe&&choice>0)safe->chooseWavetableFile(osc,choice==1?0:choice);
+ });
+}
+void SerenityEditor::chooseWavetableFile(int osc,int cycleLength){
+ fileChooser=std::make_unique<juce::FileChooser>(
+  tr("Importer une table d'ondes WAV ou AIFF","Import WAV or AIFF wavetable"),juce::File{},"*.wav;*.aif;*.aiff");
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ fileChooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
+ [safe,osc,cycleLength](const juce::FileChooser& chooser){
+  if(!safe)return;
+  auto file=chooser.getResult();if(file==juce::File{})return;
+  safe->rememberUndo();
+  auto result=safe->synth.importWavetableFile(file,osc,cycleLength);
+  if(result.failed()){safe->showStatus(result.getErrorMessage());return;}
+  safe->selectedOsc=osc;safe->selectedCustomFrame=0;
+  safe->synth.setValue(serenity::position,0.f);safe->customEditorTouched=true;
+  safe->showStatus(safe->tr("Import réussi : 8 formes éditables. ","Imported: 8 editable frames. ")+file.getFileNameWithoutExtension());
+  safe->repaint();
+ });
 }
 
 void SerenityEditor::showWavetableMenu(){
  juce::PopupMenu menu;
  menu.addSectionHeader(tr("ÉDITION WAVETABLE","WAVETABLE EDITING"));
- menu.addItem(1,tr("Importer un fichier WAV...","Import WAV file..."));
+ menu.addItem(1,tr("Importer une wavetable WAV / AIFF...","Import WAV / AIFF wavetable..."));
  menu.addItem(2,tr("Activer la table personnalisée","Use custom wavetable"));
  menu.addItem(3,tr("Normaliser l'image sélectionnée","Normalize selected frame"));
  menu.addItem(4,tr("Supprimer l'offset continu","Remove DC offset"));
@@ -1033,7 +1010,7 @@ void SerenityEditor::showWavetableMenu(){
  juce::Component::SafePointer<SerenityEditor> safe(this);
  menu.showMenuAsync(juce::PopupMenu::Options(),[safe,osc,frame](int choice){
   if(!safe||choice<=0)return;
-  if(choice==1){safe->importWavetableAudio();return;}
+  if(choice==1){safe->importWavetableAudio(osc);return;}
   if(choice==7){
    safe->fileChooser=std::make_unique<juce::FileChooser>(
     safe->tr("Exporter ma wavetable","Export custom wavetable"),

@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.0.0 — promotion de la base 0.13.2 (build 125 réussi sur macOS ARM64 et Windows x64), sans ajout de fonctionnalités ni modification du code Source. Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.1.0 — import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -18,6 +18,10 @@ Version 1.0.0 — promotion de la base 0.13.2 (build 125 réussi sur macOS ARM64
 - 100 presets d'usine, navigateur, recherche, favoris, import/export de l'état.
 - Interface native JUCE à dix pages, français/anglais, ajustement proportionnel à l'écran, sans ascenseur. Les dix images de référence sont conservées dans Assets/UI et ne servent pas de fonds statiques.
 - MIDI Learn sur paramètres pris en charge, sauvegarde des paramètres et des mappings.
+
+## Importer ses tables d'ondes
+
+Dans WAVETABLE EDITOR, sélectionner A, B, C ou D, puis IMPORTER WAV / AIFF. Choisir un cycle unique ou 256/512/1024/2048/4096 échantillons par cycle selon la source. Les fichiers mono/stéréo sont convertis en huit formes de 512 échantillons, avec interpolation entre cycles et filtrage périodique avant réduction. La table personnalisée est activée et enregistrée dans l'état du plugin. TABLE PERSONNELLE permet de revenir à la table importée après sélection d'une table d'usine. Limite : deux millions d'échantillons par fichier, longueur multiple de la taille de cycle ; pas de détection automatique de hauteur ni d'import de formats propriétaires.
 
 ## Validation et distribution
 

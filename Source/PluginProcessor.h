@@ -247,6 +247,7 @@ public:
  float getWavetablePreview(int oscillator,int wave,float position,float phase,
                            bool applyTransforms=true) const noexcept;
  void commitCustomFrame(int oscillator,int frame,const std::array<float,serenity::editableSamples>& points) noexcept;
+ juce::Result importWavetableFile(const juce::File& file,int oscillator,int cycleLength);
  void normalizeCustomFrame(int oscillator,int frame) noexcept;
  void removeCustomDc(int oscillator,int frame) noexcept;
  void copyCustomFrame(int oscillator,int from,int to) noexcept;
