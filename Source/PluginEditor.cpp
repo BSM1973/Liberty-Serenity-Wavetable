@@ -266,12 +266,16 @@ std::vector<SerenityEditor::Hotspot> SerenityEditor::hotspots()const {
    const int uni[]={oscAUnison,oscBUnison,oscCUnison,oscDUnison};
    const int selected=juce::jlimit(0,3,selectedOsc);
    hs.insert(hs.end(),{{1043,317,30,position},{1416,317,30,lev[selected]},
-     {527,708,25,detune},{614,708,25,spread},
-     {442,708,25,uni[selected]}});
+     {1168,317,30,oscAWarp+selected},{1288,317,30,oscAShape+selected},
+     {65,708,22,oscAOctave+selected},{150,708,22,oscASemi+selected},
+     {235,708,22,oscAFine+selected},{321,708,22,oscAPan+selected},
+     {527,708,24,detune},{614,708,24,spread},
+     {442,708,24,uni[selected]}});
    break;
   }
-  case 1: hs.insert(hs.end(),{{500,715,33,position},{798,713,33,position},
-   {1093,714,33,position}});break;
+  case 1: hs.insert(hs.end(),{{500,714,30,position},
+   {796,714,30,oscAWarp+juce::jlimit(0,3,selectedOsc)},
+   {1092,714,30,oscAShape+juce::jlimit(0,3,selectedOsc)}});break;
   case 2: hs.insert(hs.end(),{{64,676,34,cutoff},{149,676,31,resonance},
    {803,676,34,filter2Cutoff},{888,676,31,filter2Resonance},
    {1280,676,31,filter2Mix}});break;
@@ -358,7 +362,7 @@ void SerenityEditor::showParameterMenu(int index){
   if(!safe)return;
   if(selected==1){safe->synth.armMidiLearn(index);safe->showStatus(safe->tr("Bougez maintenant un contrôleur MIDI CC.","Now move a MIDI CC control."));}
   if(selected==2){safe->synth.clearMapping(index);safe->showStatus(safe->tr("Association supprimée.","Mapping cleared."));}
-  if(selected==3){safe->synth.setValue(index,spec.initial);safe->repaint();}
+  if(selected==3){safe->rememberUndo();safe->synth.setValue(index,spec.initial);safe->repaint();}
  });
 }
 
