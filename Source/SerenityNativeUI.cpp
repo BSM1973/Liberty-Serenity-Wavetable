@@ -20,8 +20,9 @@ struct Painter {
  SerenityAudioProcessor& dsp;
  bool fr;
  int selectedOsc;
- Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc):
-  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc){}
+ int selectedPage;
+ Painter(juce::Graphics& gg,SerenityAudioProcessor& dd,int osc,int page):
+  g(gg),dsp(dd),fr(dd.french()),selectedOsc(osc),selectedPage(page){}
  C c(juce::uint32 v){return C(v);}
  juce::String tr(const char* en,const char* french)const{
   return u(fr?french:en);
@@ -209,12 +210,125 @@ struct Painter {
  void presets();
  void settings();
 };
+
+void Painter::header(){
+ // Main titanium graphite masthead and true vector Liberty mark.
+ g.setGradientFill(juce::ColourGradient(c(0xff222c3fu),0,0,c(0xff101723u),0,62,false));
+ g.fillRect(0,0,1492,62);
+ line(0,61,1492,61,0xff3a485eu,1.5f);
+ juce::Path logo;
+ logo.startNewSubPath(41,5);logo.lineTo(61,17);logo.lineTo(61,41);
+ logo.lineTo(41,54);logo.lineTo(22,42);logo.lineTo(22,18);logo.closeSubPath();
+ g.setColour(c(0xff8caee9u));g.strokePath(logo,juce::PathStrokeType(2.f));
+ juce::Path sine;
+ sine.startNewSubPath(29,35);sine.cubicTo(35,16,40,18,44,34);
+ sine.cubicTo(48,48,50,26,55,25);
+ g.setColour(c(CYAN));g.strokePath(sine,juce::PathStrokeType(2.1f));
+ tx("S E R E N I T Y",78,7,224,25,20,TYPE,true);
+ tx("W A V E T A B L E",78,34,151,21,11,CYAN,true);
+ tx("by LIBERTY",230,35,112,18,10,PURPLE,true);
+ line(306,8,306,50,0xff39445du);
+ button(318,7,35,42,"<");
+ rr(363,5,266,46,8,DARK);outline(363,5,266,46,8,STROKE);
+ const int ix=juce::jlimit(0,99,dsp.currentPreset());
+ tx(u(serenity::factoryPresets()[(size_t)ix].name),377,10,227,29,15,TYPE,true);
+ tx("-",381,35,210,13,12,CYAN);
+ tx("v",600,15,19,20,13,CYAN,true,1);
+ button(640,7,35,42,">");
+ button(684,7,34,42,dsp.isFavorite(ix)?"★":"☆");
+ button(730,7,34,42,"S");
+ button(786,10,34,35,"A",true,GOLD);
+ button(824,10,34,35,"B");
+ button(871,10,35,35,"U");
+ button(914,10,35,35,"R");
+ button(960,9,60,38,"LEARN",dsp.currentlyLearning()>=0,PURPLE);
+ tx("MASTER",1053,7,77,18,10,MUTE,true);
+ level(1056,34,119,val(serenity::master));
+ tx("TUNE",1187,9,65,16,10,MUTE,true);
+ level(1188,34,92,.48f,PURPLE);
+ tx(juce::String(dsp.getVoiceCount()),1302,7,35,34,17,MUTE,true,1);
+ tx("VOICES",1296,34,50,17,10,MUTE,true,1);
+ tx("L",1358,7,15,13,10,MUTE);
+ level(1382,14,99,dsp.getOutputLevel());
+ tx("R",1357,30,18,13,10,MUTE);
+ level(1382,37,99,dsp.getOutputLevel()*.92f);
+ // Native navigation - aligns with screenshot tab edges.
+ rr(0,63,1492,42,0,0xff111722u);
+ const std::array<int,11> edges{{0,176,388,507,667,793,959,1112,1228,1355,1492}};
+ const char* en[]={"OSCILLATORS","WAVETABLE EDITOR","FILTERS","MODULATION","EFFECTS",
+                   "ARPEGGIATOR","SEQUENCER","MATRIX","PRESETS","SETTINGS"};
+ const char* frs[]={"OSCILLATEURS","ÉDITEUR WAVETABLE","FILTRES","MODULATION","EFFETS",
+                   "ARPÉGIATEUR","SÉQUENCEUR","MATRICE","PRESETS","RÉGLAGES"};
+ for(int i=0;i<10;i++){
+  const int x=edges[(size_t)i],w=edges[(size_t)i+1]-x;
+  const bool active=(i==selectedPage);
+  if(active){rect((float)x,64,(float)w,40,0xff242931u);
+    rect((float)x,102,(float)w,2,GOLD);}
+  tx(fr?frs[i]:en[i],(float)x+2,68,(float)w-4,27,12,active?GOLD:MUTE,true,1);
+ }
+}
+void Painter::sources(float y) {
+ rr(11,y,1476,36,9,0xff101823u);outline(11,y,1476,36,9,STROKE);
+ tx("DRAG TO A KNOB",24,y+9,136,20,11,MUTE,true);
+ const char* chips[]={"ENV 1","ENV 2","ENV 3","ENV 4","ENV 5","ENV 6",
+ "LFO 1","LFO 2","LFO 3","LFO 4","LFO 5","LFO 6","LFO 7","LFO 8",
+ "VEL","KEY","MOD WHL","AFT","RAND","SEQ"};
+ float x=165.f;
+ for(auto chip:chips) {
+  const float w=juce::jlimit(47.f,83.f,12.f+(float)juce::String(chip).length()*8.7f);
+  outline(x,y+5,w,26,14,PURPLE,1.3f);
+  tx(chip,x+2,y+5,w-4,24,11,PURPLE,true,1);
+  x+=w+5.f;
+  if(x>1450.f)break;
+ }
+}
+void Painter::footer() {
+ const float top=(selectedPage==4||selectedPage==5||selectedPage==8||
+                  selectedPage==9)?862.f:862.f;
+ panel(11,top,727,119,"MACROS · DRAG ONTO A KNOB",PURPLE);
+ const char* en[]={"BRIGHTNESS","MOVEMENT","WARMTH","SPACE","WIDTH","TEXTURE","ENERGY","SERENITY"};
+ const char* frs[]={"BRILLANCE","MOUVEMENT","CHALEUR","ESPACE","LARGEUR","TEXTURE","ÉNERGIE","SÉRÉNITÉ"};
+ for(int i=0;i<8;i++){
+  const float x=61.f+i*89.f;
+  const int param=serenity::macroBrightness+i;
+  knob(x,915,16.f,fr?frs[i]:en[i],param,
+       (i%3==1)?PURPLE:(i%3==2)?GOLD:CYAN);
+  outline(x-16,951,32,24,12,(i%3==1)?PURPLE:(i%3==2)?GOLD:CYAN,1.4f);
+  tx("M",x-14,951,28,23,11,(i%3==1)?PURPLE:CYAN,true,1);
+ }
+ panel(749,top,121,119,"WHEELS");
+ rr(765,897,7,54,3,0xff0b1320u);rr(823,897,7,54,3,0xff0b1320u);
+ rect(765,923,7,28,CYAN);
+ rr(760,916,18,12,3,0xff798da7u);
+ rr(819,941,18,12,3,0xff798da7u);
+ tx("PITCH",757,958,54,16,10,MUTE,true);
+ tx("MOD",818,958,48,16,10,MUTE,true);
+ tx("SPECTRUM",881,863,280,21,11,MUTE,true);
+ tx("OSCILLOSCOPE",1184,863,302,21,11,MUTE,true);
+ grid(882,886,289,77,6,3);
+ grid(1186,886,287,77,6,3);
+ // Spectrum and scope are vector paths; they are not pixels from the screenshots.
+ juce::Path spectrum,scope;
+ const float levelValue=dsp.getOutputLevel();
+ for(int i=0;i<=140;i++) {
+  const float t=(float)i/140.f;
+  const float amp=std::exp(-3.7f*t)*(0.55f+.40f*std::sin(25.f*t)*std::sin(39.f*t));
+  const float sx=884+285*t,sy=962-(amp*56.f*levelValue);
+  if(i==0)spectrum.startNewSubPath(sx,sy);else spectrum.lineTo(sx,sy);
+  const float wx=1188+283*t,wy=925-23.f*levelValue*std::sin(14.f*pi*t);
+  if(i==0)scope.startNewSubPath(wx,wy);else scope.lineTo(wx,wy);
+ }
+ g.setColour(c(CYAN).withAlpha(.8f));
+ g.strokePath(spectrum,juce::PathStrokeType(1.3f));
+ g.strokePath(scope,juce::PathStrokeType(1.5f));
+}
+
 } // namespace
 
 void SerenityEditor::paintNativePage(juce::Graphics& g){
  juce::Graphics::ScopedSaveState saved(g);
  g.addTransform(juce::AffineTransform::scale((float)getWidth()/1492.f,(float)getHeight()/991.f));
- Painter p(g,synth,selectedOsc);
+ Painter p(g,synth,selectedOsc,tab);
  g.fillAll(juce::Colour(BG));
  p.header();
  switch(tab){
