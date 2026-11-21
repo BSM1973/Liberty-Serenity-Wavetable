@@ -97,8 +97,8 @@ int main(){
  // Compare pixels after changing DSP parameters; a flattened screenshot would fail.
  auto pixelDigest=[](const juce::Image& img)->std::uint64_t {
    std::uint64_t digest=1469598103934665603ULL;
-   for(int y=12;y<img.getHeight();y+=11)
-    for(int x=12;x<img.getWidth();x+=13){
+   for(int y=2;y<img.getHeight();y+=5)
+    for(int x=2;x<img.getWidth();x+=7){
      const std::uint64_t argb=(std::uint64_t)img.getPixelAt(x,y).getARGB();
      digest=(digest^argb)*1099511628211ULL;
     }
