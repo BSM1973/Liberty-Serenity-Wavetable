@@ -42,6 +42,24 @@ int main(){
  for(int i=0;i<serenity::editableSamples;i++)
   smoothWave[(size_t)i]=.73f*std::sin(6.2831853071795864769f*(float)i/serenity::editableSamples);
  processor.commitCustomFrame(0,4,smoothWave);
+ const float realFrame=processor.getWavetablePreview(0,serenity::waveCount,4.f/7.f,.25f,false);
+ if(std::abs(realFrame-.73f)>.002f){
+  std::cerr<<"ERROR: native preview does not read real custom wavetable PCM"<<std::endl;
+  return 31;
+ }
+ processor.setValue(serenity::oscAWarp,.72f);
+ processor.setValue(serenity::oscAWarpMode,1.f);
+ processor.setValue(serenity::oscAShape,.55f);
+ processor.setValue(serenity::oscAShapeMode,1.f);
+ processor.setValue(serenity::oscAOctave,1.f);
+ processor.setValue(serenity::oscASemi,-2.f);
+ processor.setValue(serenity::oscAFine,15.f);
+ processor.setValue(serenity::oscAPan,.55f);
+ const float modifiedFrame=processor.getWavetablePreview(0,serenity::waveCount,4.f/7.f,.25f,true);
+ if(!std::isfinite(modifiedFrame)||std::abs(modifiedFrame-realFrame)<.03f){
+  std::cerr<<"ERROR: WARP/SHAPE controls do not transform the real rendered waveform"<<std::endl;
+  return 32;
+ }
  processor.setCustomPoint(1,7,511,-.37f);
  processor.rebuildCustomFrame(1,7); // Publish the completed audio-safe mip snapshot.
  std::array<float,serenity::editableSamples> quietSine{};
@@ -90,6 +108,13 @@ int main(){
  if(std::abs(restored.getCustomHarmonics(2,3)[4]-.21f)>.025f){
    std::cerr<<"ERROR: FFT harmonic editing lost after preset/project reload"<<std::endl;
    return 27;
+ }
+ if(std::abs(restored.getValue(serenity::oscAWarp)-.72f)>.001f||
+    std::abs(restored.getValue(serenity::oscAShape)-.55f)>.001f||
+    std::abs(restored.getValue(serenity::oscAOctave)-1.f)>.001f||
+    std::abs(restored.getValue(serenity::oscAPan)-.55f)>.001f){
+  std::cerr<<"ERROR: native oscillator controls lost after AU/VST3 project reload"<<std::endl;
+  return 33;
  }
  processor.setSequenceMode(0);
  auto editor=std::make_unique<SerenityEditor>(processor);
