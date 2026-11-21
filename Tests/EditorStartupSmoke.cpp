@@ -4,6 +4,8 @@
 #include <iostream>
 #include <memory>
 #include <cmath>
+#include <cstdint>
+#include <array>
 
 int main(){
  juce::ScopedJuceInitialiser_GUI gui;
@@ -91,14 +93,22 @@ int main(){
  }
  processor.setSequenceMode(0);
  auto editor=std::make_unique<SerenityEditor>(processor);
- if(!editor->hasTenOriginalScreens()){
-  std::cerr<<"ERROR: original 2048x1361 reference screenshots missing"<<std::endl;
-  return 10;
- }
+ // Native JUCE renderer is the only visual source: no skin PNG dependency.
+ // Compare pixels after changing DSP parameters; a flattened screenshot would fail.
+ auto pixelDigest=[](const juce::Image& img)->std::uint64_t {
+   std::uint64_t digest=1469598103934665603ULL;
+   for(int y=12;y<img.getHeight();y+=11)
+    for(int x=12;x<img.getWidth();x+=13){
+     const std::uint64_t argb=(std::uint64_t)img.getPixelAt(x,y).getARGB();
+     digest=(digest^argb)*1099511628211ULL;
+    }
+   return digest;
+ };
  if(editor->getWidth()<900 || editor->getHeight()<590){
   std::cerr<<"ERROR: impractical UI dimensions"<<std::endl;
   return 11;
  }
+ std::array<std::uint64_t,10> pageDigests{};
  for(int tab=0;tab<10;++tab){
   // Render actual sounding sequencer and arpeggiator states on original skins.
   if(tab==5)processor.setSequenceMode(1);
@@ -108,6 +118,21 @@ int main(){
   juce::Graphics painter(snapshot);
   editor->paint(painter);
   if(snapshot.isNull()) return 12;
+  pageDigests[(size_t)tab]=pixelDigest(snapshot);
+  if(pageDigests[(size_t)tab]==0)return 13;
+  if(tab==0){
+   const auto baseline=pageDigests[0];
+   const float original=processor.getValue(serenity::oscALevel);
+   processor.setValue(serenity::oscALevel,.07f);
+   auto changed=juce::Image(juce::Image::ARGB,editor->getWidth(),editor->getHeight(),true);
+   juce::Graphics other(changed);
+   editor->paint(other);
+   if(pixelDigest(changed)==baseline){
+    std::cerr<<"ERROR: editing OSC A did not alter native rendered UI"<<std::endl;
+    return 28;
+   }
+   processor.setValue(serenity::oscALevel,original);
+  }
   if(tab==0 || tab==1 || tab==5 || tab==6 || tab==8 || tab==9){
    auto destination=juce::File::getCurrentWorkingDirectory().getChildFile(
        juce::String("Serenity-UI-Preview-")+juce::String(tab)+".png");
@@ -116,8 +141,13 @@ int main(){
    if(stream)png.writeImageToStream(snapshot,*stream);
   }
  }
+ for(int a=0;a<10;a++)for(int b=a+1;b<10;b++)
+  if(pageDigests[(size_t)a]==pageDigests[(size_t)b]){
+   std::cerr<<"ERROR: two native pages have identical renders: "<<a<<","<<b<<std::endl;
+   return 29;
+  }
  editor.reset();
  processor.releaseResources();
- std::cout<<"SERENITY_TEN_ORIGINAL_SCREENS_EDITOR_SMOKE_OK"<<std::endl;
+ std::cout<<"SERENITY_TEN_NATIVE_UI_PAGES_AND_LIVE_CONTROLS_OK"<<std::endl;
  return 0;
 }
