@@ -394,6 +394,11 @@ public:
    int count=1;
    float start=1.f,step=1.f,amp=0.f,relativeStep=0.f;
    float phase=0.f,random=0.f,blend=0.f;
+   float baseSemis=0.f;
+   std::array<float,maxUnison> pitch{};
+   std::array<float,maxUnison> blendGain{};
+   std::array<float,maxUnison> relative{};
+   std::array<float,maxUnison> pan{};
   };
   std::array<UnisonState,generators> unisonStates{};
   for(int gen=0;gen<generators;gen++){
@@ -407,6 +412,32 @@ public:
    state.phase=clamp(p.oscPhase[gen],0.f,1.f);
    state.random=clamp(p.oscRandPhase[gen],0.f,1.f);
    state.blend=.65f*clamp(p.oscBlend[gen],0.f,1.f);
+   state.baseSemis=p.oscPitch[gen]+p.oscOctave[gen]*12.f
+      +p.oscSemi[gen]+p.oscFine[gen]*.01f;
+   float pitch=state.start;
+   for(int u=0;u<state.count;u++){
+    // Exact same recurrence and order as the v1.2.4 per-sample loop.
+    state.pitch[(size_t)u]=pitch;
+    pitch*=state.step;
+    const float relative=state.count==1?0.f:(state.relativeStep*u-1.f);
+    state.relative[(size_t)u]=relative;
+    state.blendGain[(size_t)u]=1.f-state.blend*std::abs(relative);
+    state.pan[(size_t)u]=clamp(relative*p.spread+p.oscPan[gen],-1.f,1.f);
+   }
+  }
+  // LFO sync, rate and smoothing are block-invariant even when a note moves.
+  std::array<float,8> lfoStep{},lfoAlpha{};
+  for(size_t k=0;k<lfoStep.size();k++){
+   const auto& cfg=p.lfos[k];
+   lfoStep[k]=lfoFrequency(cfg,k==0?p.lfoRate:cfg.rate,hostTempo)/sr;
+   lfoAlpha[k]=cfg.smooth>0.f?clamp(1.f/(sr*(.0001f+cfg.smooth*.08f)),0.f,1.f):1.f;
+  }
+  // When no frame modulation is present a whole block shares these HD frame
+  // pointers. Voice-specific frame modulation still uses prepareFrame().
+  std::array<HdTable::PreparedFrame,generators> sharedFrames{};
+  for(int g=0;g<generators;g++){
+   const auto* hd=hdTables[(size_t)g];
+   if(p.wave[g]==waveCount&&hd)sharedFrames[(size_t)g]=hd->prepareFrame(clamp(p.position,0.f,1.f));
   }
   const auto ampSettings=p.amplitude();
   const float filter1K=2.f-1.85f*clamp(p.resonance,0.f,1.f);
@@ -424,15 +455,19 @@ public:
    for(size_t k=0;k<lfos.size();k++){
     const auto& cfg=p.lfos[k];float& ph=lfoPhases[k];
     float x=lfoWave(ph+cfg.phase,cfg.shape);
-    if(cfg.smooth>0.f){lfoSmooth[k]+=(x-lfoSmooth[k])*clamp(1.f/(sr*(.0001f+cfg.smooth*.08f)),0.f,1.f);x=lfoSmooth[k];}else lfoSmooth[k]=x;
+    if(cfg.smooth>0.f){lfoSmooth[k]+=(x-lfoSmooth[k])*lfoAlpha[k];x=lfoSmooth[k];}else lfoSmooth[k]=x;
     lfos[k]=cfg.unipolar?.5f*(x+1.f):x;
-    ph+=lfoFrequency(cfg,k==0?p.lfoRate:cfg.rate,hostTempo)/sr;ph-=std::floor(ph);
+    ph+=lfoStep[k];ph-=std::floor(ph);
    }
    const float lfo=lfos[0];
    // Filter cutoff without per-voice routing is common to all active notes.
    const float globalCutoff=25.f*std::pow(800.f,
      clamp(p.cutoff+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0.f,1.f));
    const float globalFilterG=sharedFilter1?std::tan(pi*clamp(globalCutoff,10.f,sr*.45f)/sr):0.f;
+   std::array<float,generators> commonPitch{};
+   for(int gen=0;gen<generators;gen++)
+    if(p.oscLevel[gen]>=.00001f)
+     commonPitch[(size_t)gen]=std::exp2((unisonStates[(size_t)gen].baseSemis+(float)seq.pitch)/12.f);
    int countActive=0;
    for(auto &v:voices){
     if(!v.active) continue;
@@ -478,19 +513,17 @@ public:
      if(level<.00001f)continue;
      const auto& us=unisonStates[(size_t)gen];
      const int uni=us.count;
-     float base=noteBaseHz*std::exp2((p.oscPitch[gen]
-      +p.oscOctave[gen]*12.f+p.oscSemi[gen]+p.oscFine[gen]*.01f
-      +pitchMod+(float)seq.pitch)/12.f);
+     float base=noteBaseHz*(pitchMod==0.f?commonPitch[(size_t)gen]:
+      std::exp2((us.baseSemis+pitchMod+(float)seq.pitch)/12.f));
      const float mod=gen==0?prior[1]*p.fmBA+prior[2]*p.fmCA:gen==1?prior[2]*p.fmCB:0.f;
      if(p.fmMode==1)base*=std::exp2(clamp(mod,-1.f,1.f)*2.f);
      const float phaseMod=p.fmMode==0?mod*.5f:0.f;
-     float unisonPitch=us.start;
      const float amp=us.amp;
      const HdTable* const hd=p.wave[gen]==waveCount?hdTables[(size_t)gen]:nullptr;
-     const HdTable::PreparedFrame prepared=hd?hd->prepareFrame(framePosition):HdTable::PreparedFrame{};
+     const HdTable::PreparedFrame prepared=hd?(frameMod==0.f?
+       sharedFrames[(size_t)gen]:hd->prepareFrame(framePosition)):HdTable::PreparedFrame{};
      for(int u=0;u<uni;u++){
-      const float freq=clamp(base*unisonPitch,1.f,sr*.45f);
-      unisonPitch*=us.step;
+      const float freq=clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);
       float &ph=v.phase[gen][u];
       const float shifted=ph+phaseMod+us.phase+
                           us.random*v.phaseJitter[(size_t)gen][(size_t)u];
@@ -498,15 +531,14 @@ public:
       float x=(p.wave[gen]==waveCount ?
        (hd?hd->samplePrepared(warped,prepared,freq,sr):customBandlimited.sample(gen,warped,framePosition,freq,sr)) :
        bank.sample(p.wave[gen],warped,framePosition,freq,sr));
-      const float relative=uni==1?0.f:(us.relativeStep*u-1.f);
-      const float blendGain=1.f-us.blend*std::abs(relative);
+      const float blendGain=us.blendGain[(size_t)u];
       x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen]);
       v.modSignal[(size_t)gen]+=x*level/(float)uni;
       if(gen==0&&p.ringAmount>0.f){const float carrier=clamp(prior[1]+prior[2],-1.f,1.f);x*=mix(1.f,p.ringMode==0?carrier:.5f*(carrier+1.f),p.ringAmount);}
       x*=amp*blendGain;
       ph+=freq/sr;if(ph>=1.f)ph-=std::floor(ph);
-      float pan=clamp(relative*p.spread+panMod+
-                       p.oscPan[gen],-1,1);
+      float pan=panMod==0.f?us.pan[(size_t)u]:
+       clamp(us.relative[(size_t)u]*p.spread+panMod+p.oscPan[gen],-1.f,1.f);
       vl+=x*(1-pan)*.5f;vr+=x*(1+pan)*.5f;
      }
     }

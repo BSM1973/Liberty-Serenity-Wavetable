@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.4 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.5 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -32,6 +32,12 @@ Les mesures HD QC du build n°130 montrent des dépassements du budget audio à 
 Lorsque le cutoff du filtre 1 est partagé entre les voix, le coefficient de filtre TPT est calculé une seule fois par échantillon, au lieu d'être recalculé par voix et par canal. Pour le filtre 2, si le cutoff ne dépend pas des voix, les coefficients sont calculés une seule fois par bloc. Dès qu'un suivi de note, une enveloppe ou la vélocité modifie un filtre, son coefficient individuel reste calculé à chaque voix (mais est partagé entre ses canaux stéréo). La résonance est constante dans un bloc audio et ne nécessite pas de recalcul par voix.
 
 Le traitement de saturation, les états de filtre, les quinze types, les réponses à la modulation, l'architecture HD, les 32 notes et les seize voix d'unisson restent inchangés. Le test DSP compare les quinze types de filtres avec l'ancienne implémentation, huit configurations de saturation, résonance et fréquence, sur 2 048 échantillons chacune. Les performances sont relevées dans les CSV habituels, avec des configurations supplémentaires à deux filtres actifs.
+
+## Performance haute polyphonie v1.2.5
+
+À 32 notes, quatre oscillateurs et unisson 4× ou 16×, le moteur met en cache les coefficients de désaccordage et de panoramique par bloc, mutualise le facteur de hauteur MIDI par oscillateur et par échantillon quand la modulation de hauteur individuelle est nulle, calcule les incréments des huit LFO par bloc et partage la sélection de formes HD entre les voix lorsque leur position n'est pas modulée individuellement. Les chemins avec modulation individuelle restent inchangés. Aucun niveau spectral, forme, preset, polyphonie, modulation ou fréquence d'échantillonnage n'a été retiré.
+
+Le workflow construit les deux mêmes benchmarks C++ contre le DSP de référence v1.2.4 (commit épinglé) et le DSP actuel, puis les exécute en alternance sur le même runner macOS/Windows. Il publie les temps moyens, les percentiles 99 et les différences d'échantillons stéréo de sortie. Il refuse une dérive de fidélité supérieure aux seuils fixés. Ces comparaisons réduisent l'effet des différences entre runners, sans garantir le temps réel sur ordinateur personnel.
 
 ## Validation et distribution
 
