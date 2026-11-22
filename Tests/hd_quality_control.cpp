@@ -58,7 +58,7 @@ int main(){
  if(!csv||!report)return 2;
  report<<std::fixed<<std::setprecision(6);
  csv<<std::fixed<<std::setprecision(6);
- csv<<"bank,rate,block,voices,unison,rendered_seconds,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,deadline_ms,mean_budget_pct,p99_budget_pct,overruns,blocks,allocations,rms,peak,rss_mib,peak_rss_mib\n";
+ csv<<"bank,rate,block,voices,unison,rendered_seconds,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,deadline_ms,mean_budget_pct,p99_budget_pct,overruns,blocks,allocations,rms,peak,rss_mib,peak_rss_mib,filter_config\n";
  auto baseline=memory();report<<"Process initial RSS MiB: "<<baseline.rss<<" peak "<<baseline.peak<<"\n";
  auto engine=std::make_unique<Engine>();engine->prepare(48000);
  auto engineMem=memory();report<<"Legacy engine RSS MiB: "<<engineMem.rss<<"\n";
@@ -112,10 +112,13 @@ int main(){
  bool realtime=true;size_t cases=0;
  // Comparable legacy/HD workloads; 32 MIDI notes, four active generators.
  // Timing render+parameter update+pointer publication; excludes test scans and DAW overhead.
- auto run=[&](bool hd,int rate,int block,int voices,int unison,double seconds)->bool{
+ auto run=[&](bool hd,int rate,int block,int voices,int unison,double seconds,int filterConfig=0)->bool{
   engine->prepare(rate);
   Params p;p.polyphony=voices;p.attack=.001f;p.decay=.01f;p.sustain=.8f;p.release=.025f;
   p.delay=.12f;p.reverb=.12f;p.modFxMix=.12f;p.compMix=.2f;
+  if(filterConfig>=1){p.filter2On=true;p.filter2Mix=.7f;p.parallelFilters=false;}
+  if(filterConfig>=2){p.filter1Key=.32f;p.filter1Env=.24f;p.filter1Vel=.15f;
+   p.filter2Key=-.2f;p.filter2Env=.3f;p.filter2Vel=.12f;}
   for(int o=0;o<4;o++){p.oscLevel[o]=.18f;p.wave[o]=waveCount;p.unison[o]=unison;engine->setHdTable(o,hd?exchanges[o].consume():nullptr);}
   engine->setParams(p);
   for(int n=0;n<voices;n++)engine->noteOn(36+n,.72f);
@@ -134,7 +137,7 @@ int main(){
    for(int i=0;i<block;i++){if(!std::isfinite(l[i])||!std::isfinite(r[i]))return false;energy+=(double)l[i]*l[i]+(double)r[i]*r[i];peak=std::max(peak,(double)std::max(std::abs(l[i]),std::abs(r[i])));}
   }
   std::sort(times.begin(),times.end());double avg=total/blocks,p99=quantile(times,.99);auto mem=memory();
-  csv<<(hd?"HD":"legacy")<<','<<rate<<','<<block<<','<<voices<<','<<unison<<','<<(double)blocks*block/rate<<','<<avg<<','<<quantile(times,.5)<<','<<quantile(times,.95)<<','<<p99<<','<<times.back()<<','<<budget<<','<<100*avg/budget<<','<<100*p99/budget<<','<<overruns<<','<<blocks<<','<<allocations<<','<<std::sqrt(energy/(2.*blocks*block))<<','<<peak<<','<<mem.rss<<','<<mem.peak<<'\n';csv.flush();
+  csv<<(hd?"HD":"legacy")<<','<<rate<<','<<block<<','<<voices<<','<<unison<<','<<(double)blocks*block/rate<<','<<avg<<','<<quantile(times,.5)<<','<<quantile(times,.95)<<','<<p99<<','<<times.back()<<','<<budget<<','<<100*avg/budget<<','<<100*p99/budget<<','<<overruns<<','<<blocks<<','<<allocations<<','<<std::sqrt(energy/(2.*blocks*block))<<','<<peak<<','<<mem.rss<<','<<mem.peak<<','<<filterConfig<<'\n';csv.flush();
   if(hd&&overruns)realtime=false;
   ++cases;
   engine->allNotesOff();for(int i=0;i<64&&engine->numVoices()>0;i++){std::fill(l.begin(),l.end(),0);std::fill(r.begin(),r.end(),0);engine->render(l.data(),r.data(),block);}
@@ -146,6 +149,12 @@ int main(){
  for(bool hd:{false,true})if(!run(hd,48000,256,32,4,2.))return fail(report,"32-note unison-4 sustained render");
  for(bool hd:{false,true})if(!run(hd,48000,128,32,16,.5))return fail(report,"maximum unison stress");
  if(!run(true,48000,256,32,1,10.))return fail(report,"10-second HD sustained render");
+ // Both filters active: once with common cutoffs and once with independent
+ // envelope/key/velocity modulation (must not reuse invalid coefficients).
+ for(int filterConfig:{1,2}){
+  if(!run(true,48000,256,32,4,.45,filterConfig))return fail(report,"dual-filter HD unison-4 stress");
+  if(!run(true,48000,128,32,16,.2,filterConfig))return fail(report,"dual-filter HD unison-16 stress");
+ }
  // Concurrent publications: audio consumes immutable front while producer rotates slots.
  std::atomic<bool> producerDone{false},bad{false};std::atomic<int> observed{0};
  auto& x=exchanges[0];x.publish(banks[0]);

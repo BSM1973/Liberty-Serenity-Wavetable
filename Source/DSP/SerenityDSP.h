@@ -203,11 +203,18 @@ inline float filterMag(int mode,float frequency,float cutoff,float resonance,flo
  Z h=filterOutput(mode,Z(1,0),Z(1,0)/den,z/den,z*z/den,k);
  float m=std::abs(h);return doubleFilter(mode)?m*m:m;
 }
-struct FilterChannel {Svf a,b;float run(float x,float cutoff,float resonance,float drive,int mode,float sr) noexcept{
- if(drive>0){float g=1.f+drive*5.f;x=std::tanh(x*g)/g;}
- float g=std::tan(pi*clamp(cutoff,10.f,sr*.45f)/sr),k=2.f-1.85f*clamp(resonance,0.f,1.f);
- float y=a.tick(x,g,k,mode);return doubleFilter(mode)?b.tick(y,g,k,mode):y;
-}};
+struct FilterChannel {Svf a,b;
+ // Identical TPT transfer; g and k can be shared between both stereo
+ // channels, and across all notes when the cutoff has no per-voice routing.
+ float runPrepared(float x,float g,float k,float drive,int mode) noexcept {
+  if(drive>0){float gain=1.f+drive*5.f;x=std::tanh(x*gain)/gain;}
+  float y=a.tick(x,g,k,mode);return doubleFilter(mode)?b.tick(y,g,k,mode):y;
+ }
+ float run(float x,float cutoff,float resonance,float drive,int mode,float sr) noexcept {
+  const float g=std::tan(pi*clamp(cutoff,10.f,sr*.45f)/sr),k=2.f-1.85f*clamp(resonance,0.f,1.f);
+  return runPrepared(x,g,k,drive,mode);
+ }
+};
 // Eight-line orthogonal feedback delay network, stereo decorrelated taps.
 struct StereoReverb {
  std::array<std::vector<float>,8> lines;std::array<float,8> damp{};
@@ -402,6 +409,12 @@ public:
    state.blend=.65f*clamp(p.oscBlend[gen],0.f,1.f);
   }
   const auto ampSettings=p.amplitude();
+  const float filter1K=2.f-1.85f*clamp(p.resonance,0.f,1.f);
+  const float filter2K=2.f-1.85f*clamp(p.resonance2,0.f,1.f);
+  const bool sharedFilter1=p.filter1Enabled&&p.filter1Key==0.f&&p.filter1Env==0.f&&p.filter1Vel==0.f;
+  const bool sharedFilter2=p.filter2On&&p.filter2Key==0.f&&p.filter2Env==0.f&&p.filter2Vel==0.f;
+  const float filter2Base=25.f*std::pow(800.f,clamp(p.cutoff2,0.f,1.f));
+  const float filter2SharedG=sharedFilter2?std::tan(pi*clamp(filter2Base,10.f,sr*.45f)/sr):0.f;
   for(int n=0;n<count;n++){
    float l=0,r=0;
    const SequenceFrame seq=sequence.tick();
@@ -419,6 +432,7 @@ public:
    // Filter cutoff without per-voice routing is common to all active notes.
    const float globalCutoff=25.f*std::pow(800.f,
      clamp(p.cutoff+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0.f,1.f));
+   const float globalFilterG=sharedFilter1?std::tan(pi*clamp(globalCutoff,10.f,sr*.45f)/sr):0.f;
    int countActive=0;
    for(auto &v:voices){
     if(!v.active) continue;
@@ -498,14 +512,24 @@ public:
     }
     const float key=(v.note-60)/12.f,ev=envs[1];
     float a=vl,b=vr;
-    const float cutoffA=vCutoff*std::pow(2.f,key*p.filter1Key+5.f*ev*p.filter1Env+2.f*v.velocity*p.filter1Vel);
-    if(p.filter1Enabled){a=mix(vl,v.filters[0][0].run(vl,cutoffA,p.resonance,p.filter1Drive,p.filter1Type,sr),p.filter1Mix);
-     b=mix(vr,v.filters[0][1].run(vr,cutoffA,p.resonance,p.filter1Drive,p.filter1Type,sr),p.filter1Mix);}
-    if(p.filter2On){const float cutoffB=25.f*std::pow(800.f,clamp(p.cutoff2,0.f,1.f))*std::pow(2.f,key*p.filter2Key+5.f*ev*p.filter2Env+2.f*v.velocity*p.filter2Vel);
+    if(p.filter1Enabled){
+     const float cutoffA=sharedFilter1?vCutoff:
+      vCutoff*std::pow(2.f,key*p.filter1Key+5.f*ev*p.filter1Env+2.f*v.velocity*p.filter1Vel);
+     const float gA=sharedFilter1&&filterMod==0.f?globalFilterG:
+      std::tan(pi*clamp(cutoffA,10.f,sr*.45f)/sr);
+     a=mix(vl,v.filters[0][0].runPrepared(vl,gA,filter1K,p.filter1Drive,p.filter1Type),p.filter1Mix);
+     b=mix(vr,v.filters[0][1].runPrepared(vr,gA,filter1K,p.filter1Drive,p.filter1Type),p.filter1Mix);
+    }
+    if(p.filter2On){
+     const float cutoffB=sharedFilter2?filter2Base:
+      filter2Base*std::pow(2.f,key*p.filter2Key+5.f*ev*p.filter2Env+2.f*v.velocity*p.filter2Vel);
+     const float gB=sharedFilter2?filter2SharedG:std::tan(pi*clamp(cutoffB,10.f,sr*.45f)/sr);
      float inL=p.parallelFilters?vl:a,inR=p.parallelFilters?vr:b;
-     float f2l=v.filters[1][0].run(inL,cutoffB,p.resonance2,p.filter2Drive,p.filter2Type,sr);
-     float f2r=v.filters[1][1].run(inR,cutoffB,p.resonance2,p.filter2Drive,p.filter2Type,sr);
-     a=mix(a,f2l,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);b=mix(b,f2r,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);}
+     float f2l=v.filters[1][0].runPrepared(inL,gB,filter2K,p.filter2Drive,p.filter2Type);
+     float f2r=v.filters[1][1].runPrepared(inR,gB,filter2K,p.filter2Drive,p.filter2Type);
+     a=mix(a,f2l,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);
+     b=mix(b,f2r,p.parallelFilters?p.filter2Mix*.5f:p.filter2Mix);
+    }
     const float dry=1.f;
     const float seqGain=seq.velocity*v.stepGate;
     l+=a*env*v.velocity*dry*seqGain*clamp(1.f+volumeMod,0,2);

@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.3 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.4 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -26,6 +26,12 @@ Dans WAVETABLE EDITOR, sélectionner A, B, C ou D, puis IMPORTER WAV / AIFF. Cho
 ## Optimisation v1.2.2
 
 Les mesures HD QC du build n°130 montrent des dépassements du budget audio à forte polyphonie, surtout avec beaucoup de voix d'unisson. v1.2.2 optimise les recherches d'échantillons HD, supprime des opérations transcendantes répétées dans le bouclage d'unisson et conserve les paramètres, données PCM, niveaux spectraux et algorithmes de filtrage. Les benchmarks du build n°131 devront confirmer le gain ou révéler des régressions. Les timings des runners GitHub ne garantissent pas la tenue des deadlines sur les machines des utilisateurs.
+
+## Optimisation v1.2.4 — coefficients des filtres
+
+Lorsque le cutoff du filtre 1 est partagé entre les voix, le coefficient de filtre TPT est calculé une seule fois par échantillon, au lieu d'être recalculé par voix et par canal. Pour le filtre 2, si le cutoff ne dépend pas des voix, les coefficients sont calculés une seule fois par bloc. Dès qu'un suivi de note, une enveloppe ou la vélocité modifie un filtre, son coefficient individuel reste calculé à chaque voix (mais est partagé entre ses canaux stéréo). La résonance est constante dans un bloc audio et ne nécessite pas de recalcul par voix.
+
+Le traitement de saturation, les états de filtre, les quinze types, les réponses à la modulation, l'architecture HD, les 32 notes et les seize voix d'unisson restent inchangés. Le test DSP compare les quinze types de filtres avec l'ancienne implémentation, huit configurations de saturation, résonance et fréquence, sur 2 048 échantillons chacune. Les performances sont relevées dans les CSV habituels, avec des configurations supplémentaires à deux filtres actifs.
 
 ## Validation et distribution
 
