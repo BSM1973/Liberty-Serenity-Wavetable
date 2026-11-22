@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.7 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.8 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -54,6 +54,14 @@ Le moteur v1.2.6 préparait les fréquences et niveaux spectraux HD pour les not
 Les traitements à hauteur variable continuent à calculer les fréquences et les niveaux spectraux à chaque échantillon. La fidélité du moteur, les 100 presets, les 32 notes, les quatre oscillateurs, l'unisson ×16, les 256 formes, les 2 048 échantillons et l'interface ne sont pas modifiés.
 
 Le benchmark A/B épinglé à v1.2.6 comprend désormais des charges supplémentaires à unisson ×16 avec FM, matrice PITCH/MORPH et transposition du séquenceur. Le build échoue si les comparaisons d'échantillons sortent de la tolérance de qualité ; les rapports CPU sont publiés indépendamment des variations des runners GitHub.
+
+## v1.2.8 — haute polyphonie avec modulation PITCH/MORPH et séquenceur
+
+Le moteur distingue les routes de hauteur variables à chaque échantillon (enveloppes et LFO) des routes constantes pendant un bloc (vélocité, note MIDI et molette). Il peut désormais préparer et conserver les plans spectraux de ces dernières sans modifier leur hauteur. Les 32 notes, quatre oscillateurs, 16 voix d'unisson, 256 formes HD, 2 048 échantillons, 11 niveaux de filtrage et 100 presets sont préservés.
+
+Les préparations de fréquence sont réutilisées entre les blocs audio tant que la hauteur, le désaccordage, la note, l'unisson, la fréquence d'échantillonnage et l'état HD restent identiques. Pour le séquenceur, le plan d'une voix suit la hauteur du pas au début du bloc ; si une transition survient au milieu du bloc, le moteur emploie le traitement dynamique exact jusqu'au bloc suivant. Les modulations PITCH par enveloppe/LFO et la FM fréquentielle continuent d'utiliser le chemin dynamique propre à chaque oscillateur, sans préparer de caches inutiles.
+
+Les facteurs de hauteur identiques sont également calculés une seule fois par changement de hauteur du séquenceur et non à chaque échantillon. Le banc A/B compare les onze scénarios v1.2.8 et v1.2.7 avec l'intégralité des échantillons stéréo, notamment la FM, le pitch/morph, les changements de pas, les LFO et le suivi de clavier.
 
 ## Validation et distribution
 

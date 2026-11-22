@@ -280,6 +280,28 @@ struct ModRoute {
  // source: 0-5 envelopes; 6-13 LFO; 14 velocity, 15 key, 16 mod wheel
  // destination: 0 pitch, 1 wavetable, 2 cutoff, 3 amp, 4 pan
 };
+// The modulation matrix distinguishes sample-varying envelope/LFO pitch
+// from note-constant key, velocity and current block mod-wheel offsets.
+inline bool hasSampleVaryingPitchRoute(const std::array<ModRoute,64>& routes) noexcept {
+ for(const auto& route:routes)
+  if(route.source>=0&&route.source<14&&route.destination==0&&route.amount!=0.f)
+   return true;
+ return false;
+}
+inline float constantPitchForVoice(const std::array<ModRoute,64>& routes,
+                                   const Voice& voice,float wheel) noexcept {
+ float result=0.f;
+ for(const auto& route:routes){
+  if(route.destination!=0||route.amount==0.f)continue;
+  float src=0.f;
+  if(route.source==14)src=voice.velocity;
+  else if(route.source==15)src=(voice.note-60)/60.f;
+  else if(route.source==16)src=wheel;
+  const float amount=src*route.amount;
+  result+=amount*12.f;
+ }
+ return result;
+}
 // The eligibility check is block-constant, but it must inspect the complete
 // routing and sequencer configuration, not the instantaneous modulation value.
 // Otherwise computing hundreds of unused spectral plans each block penalizes
@@ -316,6 +338,16 @@ class Engine {
   HdTable::PreparedSpectral spectral{};
  };
  std::array<std::array<std::array<VoiceOscPlan,maxUnison>,generators>,maxVoices> pitchPlans{};
+ // Persistent plans survive morph-only changes across blocks. Parameters
+ // determining the exact pitch, sample-rate and HD state key invalidation.
+ struct PitchPlanKey {
+  uint64_t voiceAge=0;
+  float semis=0.f,detune=0.f,mod=0.f,sampleRate=0.f;
+  int sequencePitch=0,unison=0;
+  bool hasHD=false,valid=false;
+ };
+ std::array<std::array<PitchPlanKey,generators>,maxVoices> pitchKeys{};
+
 
  std::array<ModRoute,64> routes{};
  float sr=48000,modWheel=0;
@@ -455,29 +487,39 @@ public:
     state.pan[(size_t)u]=clamp(relative*p.spread+p.oscPan[gen],-1.f,1.f);
    }
   }
-  // A plan is useful only when pitch is static throughout this block.
-  // Matrix pitch modulation, pitched sequencer steps and frequency FM always
-  // use the original dynamic path; never prepare a plan only to discard it.
-  // FM is oscillator-specific: unaffected oscillators retain their cache.
-  const bool pitchRouted=hasRoutedPitchModulation(routes);
-  const bool seqTransposes=sequencerMayTranspose(sequence.getPattern());
+  // A cached frequency is immutable for a single note, oscillator,
+  // modulation offset and sequence step. Envelope/LFO pitch routes remain
+  // sample-dynamic; constant key/velocity/wheel routes can be prepared.
+  const bool varyingPitch=hasSampleVaryingPitchRoute(routes);
+  const auto& pattern=sequence.getPattern();
+  const int currentStep=sequence.currentStep();
+  const int cachedSequencePitch=currentStep>=0 ?
+    std::clamp(pattern.steps[(size_t)currentStep].pitch,-24,24):0;
   std::array<bool,generators> canCachePitch{};
   bool anyCachedGenerator=false;
   for(int gen=0;gen<generators;gen++){
-   canCachePitch[(size_t)gen]=
-    !pitchRouted && !seqTransposes &&
-    !oscillatorHasFrequencyFm(p,gen) && p.oscLevel[gen]>=.00001f;
+   canCachePitch[(size_t)gen]=!varyingPitch &&
+     !oscillatorHasFrequencyFm(p,gen) && p.oscLevel[gen]>=.00001f;
    anyCachedGenerator|=canCachePitch[(size_t)gen];
   }
   if(anyCachedGenerator){
    for(size_t vi=0;vi<voices.size();++vi){
     const auto& voice=voices[vi];if(!voice.active)continue;
+    const float voiceMod=constantPitchForVoice(routes,voice,modWheel);
     for(int gen=0;gen<generators;gen++){
      if(!canCachePitch[(size_t)gen])continue;
      const auto& us=unisonStates[(size_t)gen];
-     const float staticPitch=std::exp2((us.baseSemis+0.f)/12.f);
-     const float base=voice.baseFrequency*staticPitch;
      const HdTable* const hd=p.wave[gen]==waveCount?hdTables[(size_t)gen]:nullptr;
+     auto& key=pitchKeys[vi][(size_t)gen];
+     const bool same=key.valid && key.voiceAge==voice.age &&
+       key.semis==us.baseSemis && key.detune==p.detune &&
+       key.mod==voiceMod && key.sampleRate==sr &&
+       key.sequencePitch==cachedSequencePitch &&
+       key.unison==us.count && key.hasHD==(hd!=nullptr);
+     if(same)continue;
+     const float staticPitch=std::exp2(
+       (us.baseSemis+voiceMod+(float)cachedSequencePitch)/12.f);
+     const float base=voice.baseFrequency*staticPitch;
      for(int u=0;u<us.count;u++){
       const float freq=clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);
       auto& plan=pitchPlans[vi][(size_t)gen][(size_t)u];
@@ -485,6 +527,10 @@ public:
       plan.phaseIncrement=freq/sr;
       plan.spectral=hd?HdTable::prepareSpectral(freq,sr):HdTable::PreparedSpectral{};
      }
+     key.voiceAge=voice.age;key.semis=us.baseSemis;
+     key.detune=p.detune;key.mod=voiceMod;
+     key.sampleRate=sr;key.sequencePitch=cachedSequencePitch;
+     key.unison=us.count;key.hasHD=hd!=nullptr;key.valid=true;
     }
    }
   }
@@ -509,6 +555,11 @@ public:
   const bool sharedFilter2=p.filter2On&&p.filter2Key==0.f&&p.filter2Env==0.f&&p.filter2Vel==0.f;
   const float filter2Base=25.f*std::pow(800.f,clamp(p.cutoff2,0.f,1.f));
   const float filter2SharedG=sharedFilter2?std::tan(pi*clamp(filter2Base,10.f,sr*.45f)/sr):0.f;
+  // A sequencer pitch changes at step boundaries, not every audio sample.
+  // Reuse exactly the same common oscillator exponents until it changes.
+  std::array<float,generators> commonPitch{};
+  int lastCommonPitch=0;
+  bool commonPitchReady=false;
   for(int n=0;n<count;n++){
    float l=0,r=0;
    const SequenceFrame seq=sequence.tick();
@@ -527,10 +578,14 @@ public:
    const float globalCutoff=25.f*std::pow(800.f,
      clamp(p.cutoff+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0.f,1.f));
    const float globalFilterG=sharedFilter1?std::tan(pi*clamp(globalCutoff,10.f,sr*.45f)/sr):0.f;
-   std::array<float,generators> commonPitch{};
-   for(int gen=0;gen<generators;gen++)
-    if(p.oscLevel[gen]>=.00001f)
-     commonPitch[(size_t)gen]=std::exp2((unisonStates[(size_t)gen].baseSemis+(float)seq.pitch)/12.f);
+   if(!commonPitchReady||lastCommonPitch!=seq.pitch){
+    for(int gen=0;gen<generators;gen++)
+     if(p.oscLevel[gen]>=.00001f)
+      commonPitch[(size_t)gen]=std::exp2(
+       (unisonStates[(size_t)gen].baseSemis+(float)seq.pitch)/12.f);
+    lastCommonPitch=seq.pitch;
+    commonPitchReady=true;
+   }
    int countActive=0;
    for(size_t voiceIndex=0;voiceIndex<voices.size();++voiceIndex){
     auto &v=voices[voiceIndex];
@@ -577,7 +632,9 @@ public:
      if(level<.00001f)continue;
      const auto& us=unisonStates[(size_t)gen];
      const int uni=us.count;
-     const bool fixedPitch=canCachePitch[(size_t)gen]&&pitchMod==0.f&&seq.pitch==0;
+     const bool fixedPitch=canCachePitch[(size_t)gen] &&
+       pitchMod==pitchKeys[voiceIndex][(size_t)gen].mod &&
+       seq.pitch==cachedSequencePitch;
      float base=0.f;
      const float mod=gen==0?prior[1]*p.fmBA+prior[2]*p.fmCA:gen==1?prior[2]*p.fmCB:0.f;
      if(!fixedPitch){

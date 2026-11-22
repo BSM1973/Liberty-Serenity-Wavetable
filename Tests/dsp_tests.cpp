@@ -48,6 +48,35 @@ int main(){
  fm.fmCB=0.f;fm.fmCA=.5f;
  assert(oscillatorHasFrequencyFm(fm,0));
  assert(!oscillatorHasFrequencyFm(fm,1));
+ // v1.2.8: cache only sample-constant pitch sources; preserve the
+ // exact arithmetic/accumulation order for note, velocity and wheel routes.
+ std::array<ModRoute,64> stableRoutes{};
+ assert(!hasSampleVaryingPitchRoute(stableRoutes));
+ stableRoutes[0]={14,0,.36f}; // velocity is note-constant
+ stableRoutes[1]={15,0,-.24f}; // key is note-constant
+ stableRoutes[2]={16,0,.17f}; // wheel is block-constant
+ stableRoutes[3]={0,1,.5f};  // morphing envelope is not a pitch route
+ assert(!hasSampleVaryingPitchRoute(stableRoutes));
+ Voice noteVoice;noteVoice.start(64,.73f,1);
+ for(float wheel:{0.f,.31f,1.f}){
+  float reference=0.f;
+  for(const auto& route:stableRoutes){
+   if(route.source<0||route.destination!=0||route.amount==0.f)continue;
+   float src=0.f;
+   if(route.source==14)src=noteVoice.velocity;
+   else if(route.source==15)src=(noteVoice.note-60)/60.f;
+   else if(route.source==16)src=wheel;
+   const float amount=src*route.amount;
+   reference+=amount*12.f;
+  }
+  assert(constantPitchForVoice(stableRoutes,noteVoice,wheel)==reference);
+ }
+ stableRoutes[4]={6,0,.15f}; // LFO pitch varies sample-by-sample
+ assert(hasSampleVaryingPitchRoute(stableRoutes));
+ stableRoutes[4]={0,0,.1f}; // envelope pitch varies sample-by-sample
+ assert(hasSampleVaryingPitchRoute(stableRoutes));
+ stableRoutes[4].amount=0.f;
+ assert(!hasSampleVaryingPitchRoute(stableRoutes));
  const auto &presets=factoryPresets();
  assert(presets.size()==100);
  std::map<std::string,int> counts;
