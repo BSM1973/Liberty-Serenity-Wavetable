@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.6 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.7 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -46,6 +46,14 @@ Lorsque la hauteur d'une note reste stable, la fréquence des 1 à 16 oscillateu
 En cas de pitch bend par modulation, transposition du séquenceur, ou FM de fréquence non nulle, le moteur utilise immédiatement l'ancien chemin dynamique, qui recalcule les fréquences et le niveau spectral à chaque échantillon. Les modifications de morphing des tables et les 15 modes de filtre ne sont pas modifiés.
 
 Le nouveau banc A/B compare la v1.2.6 à la v1.2.5 sur chaque runner macOS/Windows, avec des scénarios supplémentaires de FM dynamique et de modulation matricielle. Il vérifie la précision des échantillons audio, les temps moyens, les pics p99 et la polyphonie. Aucun gain n'est considéré comme acquis avant lecture des rapports.
+
+## Optimisation v1.2.7 — supprimer les caches inutiles
+
+Le moteur v1.2.6 préparait les fréquences et niveaux spectraux HD pour les notes actives même lorsque la modulation de hauteur ou la transposition du séquenceur empêchaient ensuite leur utilisation. La v1.2.7 calcule l'éligibilité au cache une seule fois par bloc, avant de parcourir les 32 notes. L'activation d'une route de matrice vers PITCH ou la présence d'une transposition de séquence désactive la préparation ; en FM fréquentielle, seuls les oscillateurs effectivement modulés sont exclus du cache.
+
+Les traitements à hauteur variable continuent à calculer les fréquences et les niveaux spectraux à chaque échantillon. La fidélité du moteur, les 100 presets, les 32 notes, les quatre oscillateurs, l'unisson ×16, les 256 formes, les 2 048 échantillons et l'interface ne sont pas modifiés.
+
+Le benchmark A/B épinglé à v1.2.6 comprend désormais des charges supplémentaires à unisson ×16 avec FM, matrice PITCH/MORPH et transposition du séquenceur. Le build échoue si les comparaisons d'échantillons sortent de la tolérance de qualité ; les rapports CPU sont publiés indépendamment des variations des runners GitHub.
 
 ## Validation et distribution
 

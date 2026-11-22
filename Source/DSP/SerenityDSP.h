@@ -280,6 +280,28 @@ struct ModRoute {
  // source: 0-5 envelopes; 6-13 LFO; 14 velocity, 15 key, 16 mod wheel
  // destination: 0 pitch, 1 wavetable, 2 cutoff, 3 amp, 4 pan
 };
+// The eligibility check is block-constant, but it must inspect the complete
+// routing and sequencer configuration, not the instantaneous modulation value.
+// Otherwise computing hundreds of unused spectral plans each block penalizes
+// the dynamic-FM and pitch-envelope workflows.
+inline bool hasRoutedPitchModulation(const std::array<ModRoute,64>& routes) noexcept {
+ for(const auto& route:routes)
+  if(route.source>=0 && route.destination==0 && route.amount!=0.f)return true;
+ return false;
+}
+inline bool sequencerMayTranspose(const SequencePattern& pattern) noexcept {
+ if(pattern.mode==0)return false;
+ const int length=std::clamp(pattern.length,1,sequenceMaxSteps);
+ for(int i=0;i<length;i++)
+  if(pattern.steps[(size_t)i].pitch!=0)return true;
+ return false;
+}
+inline bool oscillatorHasFrequencyFm(const Params& p,int gen) noexcept {
+ if(p.fmMode!=1)return false;
+ if(gen==0)return p.fmBA!=0.f||p.fmCA!=0.f;
+ if(gen==1)return p.fmCB!=0.f;
+ return false;
+}
 
 class Engine {
  WavetableBank bank;
@@ -433,16 +455,25 @@ public:
     state.pan[(size_t)u]=clamp(relative*p.spread+p.oscPan[gen],-1.f,1.f);
    }
   }
-  // Prepare all fixed-pitch frequencies and spectral levels once per block.
-  // MIDI step transposition, modulation matrix pitch and active FM still use
-  // the original dynamic per-sample path, so their behavior is unchanged.
-  const bool mayUseFixedPitch=p.fmMode!=1||
-       (p.fmBA==0.f&&p.fmCA==0.f&&p.fmCB==0.f);
-  if(mayUseFixedPitch){
+  // A plan is useful only when pitch is static throughout this block.
+  // Matrix pitch modulation, pitched sequencer steps and frequency FM always
+  // use the original dynamic path; never prepare a plan only to discard it.
+  // FM is oscillator-specific: unaffected oscillators retain their cache.
+  const bool pitchRouted=hasRoutedPitchModulation(routes);
+  const bool seqTransposes=sequencerMayTranspose(sequence.getPattern());
+  std::array<bool,generators> canCachePitch{};
+  bool anyCachedGenerator=false;
+  for(int gen=0;gen<generators;gen++){
+   canCachePitch[(size_t)gen]=
+    !pitchRouted && !seqTransposes &&
+    !oscillatorHasFrequencyFm(p,gen) && p.oscLevel[gen]>=.00001f;
+   anyCachedGenerator|=canCachePitch[(size_t)gen];
+  }
+  if(anyCachedGenerator){
    for(size_t vi=0;vi<voices.size();++vi){
     const auto& voice=voices[vi];if(!voice.active)continue;
     for(int gen=0;gen<generators;gen++){
-     if(p.oscLevel[gen]<.00001f)continue;
+     if(!canCachePitch[(size_t)gen])continue;
      const auto& us=unisonStates[(size_t)gen];
      const float staticPitch=std::exp2((us.baseSemis+0.f)/12.f);
      const float base=voice.baseFrequency*staticPitch;
@@ -546,7 +577,7 @@ public:
      if(level<.00001f)continue;
      const auto& us=unisonStates[(size_t)gen];
      const int uni=us.count;
-     const bool fixedPitch=mayUseFixedPitch&&pitchMod==0.f&&seq.pitch==0;
+     const bool fixedPitch=canCachePitch[(size_t)gen]&&pitchMod==0.f&&seq.pitch==0;
      float base=0.f;
      const float mod=gen==0?prior[1]*p.fmBA+prior[2]*p.fmCA:gen==1?prior[2]*p.fmCB:0.f;
      if(!fixedPitch){

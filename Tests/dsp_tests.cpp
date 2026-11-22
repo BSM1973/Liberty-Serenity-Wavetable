@@ -16,6 +16,38 @@ int main(){
   const float before=440.f*std::pow(2.f,(note-69)/12.f);
   assert(std::isfinite(voice.baseFrequency)&&voice.baseFrequency==before);
  }
+ // v1.2.7: never prepare fixed-pitch plans for modulated notes.
+ // A bypassed sequencer must not disable the optimization.
+ std::array<ModRoute,64> pitchRoutes{};
+ assert(!hasRoutedPitchModulation(pitchRoutes));
+ pitchRoutes[0]={14,1,.7f}; // Wavetable morph does not change frequency.
+ assert(!hasRoutedPitchModulation(pitchRoutes));
+ pitchRoutes[1]={0,0,.25f}; // Envelope -> pitch: dynamic for all generators.
+ assert(hasRoutedPitchModulation(pitchRoutes));
+ pitchRoutes[1].amount=0.f;
+ assert(!hasRoutedPitchModulation(pitchRoutes));
+ SequencePattern pitched=defaultSequence();
+ assert(!sequencerMayTranspose(pitched)); // mode 0 bypass
+ pitched.mode=2;
+ assert(sequencerMayTranspose(pitched));
+ for(auto& step:pitched.steps)step.pitch=0;
+ assert(!sequencerMayTranspose(pitched));
+ pitched.steps[0].pitch=7;
+ assert(sequencerMayTranspose(pitched));
+ Params fm;
+ fm.fmMode=0;fm.fmBA=.5f;
+ for(int gen=0;gen<generators;gen++)assert(!oscillatorHasFrequencyFm(fm,gen));
+ fm.fmMode=1;
+ assert(oscillatorHasFrequencyFm(fm,0));
+ assert(!oscillatorHasFrequencyFm(fm,1));
+ assert(!oscillatorHasFrequencyFm(fm,2));
+ fm.fmBA=0.f;fm.fmCB=.35f;
+ assert(!oscillatorHasFrequencyFm(fm,0));
+ assert(oscillatorHasFrequencyFm(fm,1));
+ assert(!oscillatorHasFrequencyFm(fm,2));
+ fm.fmCB=0.f;fm.fmCA=.5f;
+ assert(oscillatorHasFrequencyFm(fm,0));
+ assert(!oscillatorHasFrequencyFm(fm,1));
  const auto &presets=factoryPresets();
  assert(presets.size()==100);
  std::map<std::string,int> counts;

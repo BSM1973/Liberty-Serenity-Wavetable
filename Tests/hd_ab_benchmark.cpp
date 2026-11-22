@@ -1,4 +1,4 @@
-// Same source is compiled against v1.2.5 and candidate DSP headers.
+// Same source is compiled against pinned v1.2.6 and candidate DSP headers.
 // Runs on the same GitHub Actions runner in alternating A/B order.
 #include "SerenityDSP.h"
 #include <algorithm>
@@ -21,7 +21,10 @@ constexpr Scenario scenarios[]={
  {"u16_96k_b256",96000,256,16,false,45},
  {"u4_48k_b256_f2",48000,256,4,true,52},
  {"u4_48k_b256_dynamic_fm",48000,256,4,false,42,1},
- {"u4_48k_b256_pitch_morph",48000,256,4,false,42,2}
+ {"u4_48k_b256_pitch_morph",48000,256,4,false,42,2},
+ {"u16_48k_b128_dynamic_fm",48000,128,16,false,45,1},
+ {"u16_48k_b128_pitch_morph",48000,128,16,false,45,2},
+ {"u16_48k_b128_seq_pitch",48000,128,16,false,45,3}
 };
 static double quantile(std::vector<double> v,double p){
  std::sort(v.begin(),v.end());
@@ -53,6 +56,11 @@ int main(int argc,char** argv){
   for(int g=0;g<4;g++){p.oscLevel[g]=.18f;p.wave[g]=waveCount;p.unison[g]=sc.unison;engine->setHdTable(g,tables[(size_t)g].get());}
   engine->setParams(p);
   if(sc.variant==2){engine->route(0)={14,0,.36f};engine->route(1)={0,1,.22f};}
+  if(sc.variant==3){
+   auto pattern=defaultSequence();pattern.mode=2;pattern.rate=32;
+   pattern.tempo=200.f;pattern.length=8;
+   engine->setSequence(pattern);
+  }
   for(int n=0;n<32;n++)engine->noteOn(36+n,.76f);
   std::vector<float> l((size_t)sc.block),r((size_t)sc.block);
   // Warm up filters and LFO in exactly the same way in both versions.
