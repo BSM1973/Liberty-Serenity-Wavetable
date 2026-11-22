@@ -89,7 +89,7 @@ def main():
         f"Runner: {platform.system()} {platform.machine()}. Pinned baseline: v1.2.6 commit 56ab424460f3b46e29eff885a15fcef820b09302.",
         "A/B/A/B order: baseline, candidate, candidate, baseline, on the same runner, same source benchmark, identical high-density HD tables and MIDI notes.",
         "CPU numbers are medians of two trials for each version. Shared-runner scheduling and thermal variation remain sources of measurement noise.",
-        "A negative change indicates less CPU time. Fidelity compares 8 interleaved stereo blocks per case, sample for sample.",
+        "A negative change indicates less CPU time. Fidelity compares the complete sequence of rendered interleaved stereo blocks, sample for sample.",
         "",
         "| Scenario | Baseline mean % budget | New mean % budget | Mean CPU change | New p99 % budget | Max audio delta |",
         "|---|---:|---:|---:|---:|---:|",

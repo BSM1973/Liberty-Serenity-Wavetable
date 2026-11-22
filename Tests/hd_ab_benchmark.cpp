@@ -81,7 +81,7 @@ int main(int argc,char** argv){
     const float x=l[(size_t)i],y=r[(size_t)i];
     if(!std::isfinite(x)||!std::isfinite(y)){std::cerr<<"non-finite audio\n";return 6;}
     energy+=(double)x*x+y*y;peak=std::max({peak,(double)std::abs(x),(double)std::abs(y)});
-    if(n<8){audio.write(reinterpret_cast<const char*>(&x),sizeof(x));audio.write(reinterpret_cast<const char*>(&y),sizeof(y));}
+    {audio.write(reinterpret_cast<const char*>(&x),sizeof(x));audio.write(reinterpret_cast<const char*>(&y),sizeof(y));}
    }
   }
   double sum=0;for(auto ms:timeMs)sum+=ms;

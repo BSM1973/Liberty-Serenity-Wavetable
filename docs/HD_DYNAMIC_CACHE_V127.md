@@ -20,3 +20,5 @@ Réduire le coût des notes modulées à 32 voix et quatre générateurs (unisso
 
 ## Conditions de livraison
 Les deux builds macOS ARM64 (AU/VST3/Standalone) et Windows x64 (VST3/Standalone) et les comparaisons de fidélité doivent être verts avant d'annoncer la v1.2.7 comme validée. Les gains CPU sont rapportés tels que mesurés, y compris d'éventuelles régressions.
+
+**Renforcement du contrôle audio :** les fichiers de référence et de comparaison comprennent désormais tous les blocs mesurés, afin de vérifier les transitions de transposition du séquenceur et les évolutions de modulation sur toute la durée du scénario, et non seulement les huit premiers blocs.
