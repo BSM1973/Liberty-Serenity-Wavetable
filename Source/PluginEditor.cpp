@@ -233,6 +233,13 @@ void SerenityEditor::paintInteraction(juce::Graphics& g){
    g.drawEllipse(center,2.f);
   }
  }
+ if(wavetableDragActive&&tab==1){
+  const auto bounds=scaleRect(456,151,681,422);
+  g.setColour(aqua.withAlpha(.12f));g.fillRoundedRectangle(bounds,7.f);
+  g.setColour(aqua);g.drawRoundedRectangle(bounds,7.f,2.f);
+  g.setColour(juce::Colour(0xff101b2b));g.fillRoundedRectangle(scaleRect(484,340,625,50),6.f);
+  drawText(g,tr("Déposer la table d'ondes WAV / AIFF","Drop WAV / AIFF wavetable"),502,344,580,42,aqua,19,true);
+ }
  if(statusCountdown>0){
   // Compact feedback stays in the 22-pixel gap between routing rail and footer.
   g.setColour(juce::Colour(0xee111b2b));g.fillRoundedRectangle(scaleRect(919,842,557,18),4.f);
@@ -956,32 +963,67 @@ void SerenityEditor::drawCustomPoint(juce::Point<float> p){
  repaint();
 }
 
-void SerenityEditor::importWavetableAudio(int osc){
- juce::PopupMenu choices;
- choices.addSectionHeader(tr("TAILLE DU CYCLE SOURCE","SOURCE CYCLE LENGTH"));
- choices.addItem(1,tr("Un seul cycle : fichier entier","Single cycle: whole file"));
- for(int n:{256,512,1024,2048,4096})choices.addItem(n,juce::String(n)+tr(" échantillons par cycle"," samples per cycle"));
- juce::Component::SafePointer<SerenityEditor> safe(this);
- choices.showMenuAsync(juce::PopupMenu::Options(),[safe,osc](int choice){
-  if(safe&&choice>0)safe->chooseWavetableFile(osc,choice==1?0:choice);
- });
+bool SerenityEditor::isInterestedInFileDrag(const juce::StringArray& files){
+ if(tab!=1||files.size()!=1)return false;
+ auto ext=juce::File(files[0]).getFileExtension().toLowerCase();
+ return ext==".wav"||ext==".aif"||ext==".aiff";
 }
-void SerenityEditor::chooseWavetableFile(int osc,int cycleLength){
+void SerenityEditor::fileDragEnter(const juce::StringArray& files,int,int){
+ wavetableDragActive=isInterestedInFileDrag(files);repaint();
+}
+void SerenityEditor::fileDragExit(const juce::StringArray&){
+ wavetableDragActive=false;repaint();
+}
+void SerenityEditor::filesDropped(const juce::StringArray& files,int,int){
+ wavetableDragActive=false;repaint();
+ if(isInterestedInFileDrag(files))chooseWavetableCycle(selectedOsc,juce::File(files[0]));
+}
+void SerenityEditor::importWavetableAudio(int osc){
  fileChooser=std::make_unique<juce::FileChooser>(
   tr("Importer une table d'ondes WAV ou AIFF","Import WAV or AIFF wavetable"),juce::File{},"*.wav;*.aif;*.aiff");
  juce::Component::SafePointer<SerenityEditor> safe(this);
  fileChooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
- [safe,osc,cycleLength](const juce::FileChooser& chooser){
+ [safe,osc](const juce::FileChooser& chooser){
   if(!safe)return;
-  auto file=chooser.getResult();if(file==juce::File{})return;
-  safe->rememberUndo();
-  auto result=safe->synth.importWavetableFile(file,osc,cycleLength);
-  if(result.failed()){safe->showStatus(result.getErrorMessage());return;}
-  safe->selectedOsc=osc;safe->selectedCustomFrame=0;
-  safe->synth.setValue(serenity::position,0.f);safe->customEditorTouched=true;
-  safe->showStatus(safe->tr("Import réussi : 8 formes éditables. ","Imported: 8 editable frames. ")+file.getFileNameWithoutExtension());
-  safe->repaint();
+  const auto file=chooser.getResult();if(file==juce::File{})return;
+  safe->chooseWavetableCycle(osc,file);
  });
+}
+void SerenityEditor::chooseWavetableCycle(int osc,const juce::File& file){
+ juce::AudioFormatManager manager;manager.registerBasicFormats();
+ std::unique_ptr<juce::AudioFormatReader> reader(manager.createReaderFor(file));
+ if(!reader||reader->lengthInSamples<2||reader->lengthInSamples>2000000||reader->numChannels<1||reader->numChannels>2){
+  showStatus(tr("Fichier incompatible ou trop volumineux.","Incompatible file or file too large."));return;
+ }
+ const int count=(int)reader->lengthInSamples;
+ juce::PopupMenu choices;
+ choices.addSectionHeader(file.getFileName());
+ choices.addSectionHeader(tr("Taille du cycle source","Source cycle length"));
+ choices.addItem(1,tr("Cycle unique : ","Single cycle: ")+juce::String(count)+tr(" échantillons"," samples"));
+ for(int n:{256,512,1024,2048,4096})if(count>=n&&count%n==0){
+  const int frames=count/n;
+  choices.addItem(n,juce::String(n)+tr(" éch. / cycle - "," samples / cycle - ")+juce::String(frames)+tr(" formes"," frames"));
+ }
+ choices.addSeparator();
+ choices.addItem(9000,tr("Annuler","Cancel"));
+ juce::Component::SafePointer<SerenityEditor> safe(this);
+ choices.showMenuAsync(juce::PopupMenu::Options(),[safe,osc,file](int choice){
+  if(safe&&choice>0&&choice!=9000)safe->performWavetableImport(osc,file,choice==1?0:choice);
+ });
+}
+void SerenityEditor::performWavetableImport(int osc,const juce::File& file,int cycleLength){
+ // Failed imports must not touch existing sounds or undo/redo history.
+ juce::MemoryBlock before;synth.getStateInformation(before);
+ auto result=synth.importWavetableFile(file,osc,cycleLength);
+ if(result.failed()){showStatus(result.getErrorMessage());return;}
+ if(undoHistory.empty()||undoHistory.back()!=before){
+  undoHistory.push_back(std::move(before));if(undoHistory.size()>32)undoHistory.erase(undoHistory.begin());
+ }
+ redoHistory.clear();
+ selectedOsc=osc;selectedCustomFrame=0;
+ synth.setValue(serenity::position,0.f);customEditorTouched=true;
+ showStatus(tr("Import réussi : 8 formes. ","Imported: 8 frames. ")+file.getFileNameWithoutExtension());
+ repaint();
 }
 
 void SerenityEditor::showWavetableMenu(){

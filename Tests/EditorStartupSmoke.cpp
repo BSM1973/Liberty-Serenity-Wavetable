@@ -97,6 +97,23 @@ int main(){
  auto imported=processor.importWavetableFile(importFile.getFile(),3,cycle);
  if(imported.failed()){std::cerr<<imported.getErrorMessage()<<std::endl;return 42;}
  if(std::abs(processor.getCustomPoint(3,0,128)-.2f)>.005f||std::abs(processor.getCustomPoint(3,7,128)-.8f)>.005f||std::abs(processor.getCustomPoint(3,3,128)-(.2f+.6f*3.f/7.f))>.005f||processor.getValue(serenity::oscDWave)!=serenity::waveCount)return 43;
+ // Verify an invalid import cannot overwrite the recently imported table.
+ const float beforeInvalid=processor.getCustomPoint(3,7,128);
+ if(processor.importWavetableFile(importFile.getFile(),3,1000).wasOk()||processor.getCustomPoint(3,7,128)!=beforeInvalid)return 45;
+ // Actual stereo AIFF with a single 512-sample cycle; downmix must be 0.4.
+ juce::TemporaryFile aiffFile(".aiff");
+ juce::MemoryOutputStream aiff;
+ constexpr int aiffSamples=512,bytes=aiffSamples*4;
+ aiff.write("FORM",4);aiff.writeIntBigEndian(46+bytes);aiff.write("AIFFCOMM",8);aiff.writeIntBigEndian(18);
+ aiff.writeShortBigEndian(2);aiff.writeIntBigEndian(aiffSamples);aiff.writeShortBigEndian(16);
+ const unsigned char rate[]={0x40,0x0e,0xac,0x44,0,0,0,0,0,0};
+ aiff.write(rate,sizeof(rate));aiff.write("SSND",4);aiff.writeIntBigEndian(bytes+8);aiff.writeIntBigEndian(0);aiff.writeIntBigEndian(0);
+ for(int i=0;i<aiffSamples;i++){float p=std::sin(6.2831853071795864769f*i/aiffSamples);aiff.writeShortBigEndian((short)std::lround(32767.f*.6f*p));aiff.writeShortBigEndian((short)std::lround(32767.f*.2f*p));}
+ if(!aiffFile.getFile().replaceWithData(aiff.getData(),aiff.getDataSize()))return 46;
+ if(processor.importWavetableFile(aiffFile.getFile(),3,0).failed())return 47;
+ for(int f=0;f<8;f++)if(std::abs(processor.getCustomPoint(3,f,128)-.4f)>.005f)return 48;
+ if(std::abs(processor.getCustomPoint(0,4,128)-.73f)>.005f)return 49;
+ if(processor.importWavetableFile(importFile.getFile(),3,cycle).failed())return 50;
  // Verify all 64 steps in all four banks can survive AU/VST3 project state roundtrips.
  processor.setSequenceMode(2);
  processor.setSequenceBank(3);

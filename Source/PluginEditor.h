@@ -4,7 +4,7 @@
 #include <array>
 #include <vector>
 
-class SerenityEditor final: public juce::AudioProcessorEditor,private juce::Timer {
+class SerenityEditor final: public juce::AudioProcessorEditor,public juce::FileDragAndDropTarget,private juce::Timer {
 public:
  explicit SerenityEditor(SerenityAudioProcessor&);
  ~SerenityEditor() override = default;
@@ -22,6 +22,10 @@ public:
  void mouseMove(const juce::MouseEvent&) override;
  void mouseWheelMove(const juce::MouseEvent&,const juce::MouseWheelDetails&) override;
  bool keyPressed(const juce::KeyPress&) override;
+ bool isInterestedInFileDrag(const juce::StringArray&) override;
+ void fileDragEnter(const juce::StringArray&,int,int) override;
+ void fileDragExit(const juce::StringArray&) override;
+ void filesDropped(const juce::StringArray&,int,int) override;
 private:
  struct Hotspot {float x,y,r;int parameter;};
  SerenityAudioProcessor& synth;
@@ -56,7 +60,9 @@ private:
  void paintOscillators(juce::Graphics&);
  void showWavetableMenu();
  void importWavetableAudio(int oscillator);
- void chooseWavetableFile(int oscillator,int cycleLength);
+ void chooseWavetableCycle(int oscillator,const juce::File&);
+ void performWavetableImport(int oscillator,const juce::File&,int cycleLength);
+ bool wavetableDragActive=false;
  void drawCustomPoint(juce::Point<float> p);
  void drawCustomHarmonic(juce::Point<float> p);
  void paintSequencer(juce::Graphics&);

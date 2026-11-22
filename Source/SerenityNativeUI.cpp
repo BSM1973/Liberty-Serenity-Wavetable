@@ -585,7 +585,7 @@ void Painter::oscillators(){
   tx(juce::String((int)std::round(100.f*val(levels[i])))+"%",66,y+99,66,17,11,MUTE);
   tx("F1",226,y+99,25,16,10,MUTE);
  }
- panel(267,118,691,511,("WAVETABLE · OSC "+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8());
+ panel(267,118,691,511,(u("WAVETABLE · OSC ")+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8());
  for(int i=0;i<4;i++){
   const float x=801+i*35.f;
   tab(x,121,30,24,juce::String::charToString((juce_wchar)('A'+i)).toRawUTF8(),
@@ -663,11 +663,12 @@ void Painter::editor(){
  button(321,604,103,28,("OSC "+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8(),true,CYAN);
  button(23,648,203,36,tr("IMPORT WAV / AIFF","IMPORTER WAV / AIFF").toRawUTF8(),false,GOLD);
  button(236,648,188,36,tr("CUSTOM TABLE","TABLE PERSONNELLE").toRawUTF8(),selectedWave==serenity::waveCount,PURPLE);
- tx(tr("Select source cycle size before import.","Choisir la taille du cycle avant import."),23,690,400,20,11,MUTE);
- tx("8 FRAMES · 512 SAMPLES PER FRAME",23,727,388,22,11,MUTE,true);
- tx("BAND-LIMITED IN 9 SPECTRAL LEVELS",23,748,390,22,11,MUTE);
+ tx(tr("Drop a WAV / AIFF file on this page.","Déposer un fichier WAV / AIFF sur cette page."),23,690,400,20,11,MUTE);
+ tx(tr("Choose a compatible cycle length.","Choisir ensuite la taille du cycle."),23,710,400,17,10,MUTE);
+ tx(tr("8 FRAMES / 512 SAMPLES PER FRAME","8 FORMES / 512 ÉCHANTILLONS PAR FORME"),23,732,388,22,11,MUTE,true);
+ tx(tr("BAND-LIMITED IN 9 SPECTRAL LEVELS","9 NIVEAUX SPECTRAUX ANTI-ALIASING"),23,754,390,22,11,MUTE);
  panel(446,118,701,723,
-       ("3D WAVETABLE · OSC "+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8());
+       (u("3D WAVETABLE · OSC ")+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8());
  button(946,122,194,23,"WARP + SHAPE PREVIEW",true,GOLD);
  waves3d(459,156,675,416,selectedOsc,selectedWave,val(serenity::position));
  tx("POSITION",473,166,140,22,11,MUTE,true);
@@ -677,10 +678,10 @@ void Painter::editor(){
  const char* waveNames[]={"Classic","Analog Saw","Pulse Sweep","Hollow Square",
   "Reso Saw","Vowel Choir","Spectral Peak","FM Bell","FM E-Piano","Metal",
   "Organ","Reed","Phase Choir","Sync Sweep","Chaos FM","Crystal","Custom"};
- tx(waveNames[selectedWave],989,170,135,24,14,CYAN,true);
- tx("DRAG UP / DOWN TO MORPH · FRAME 1 IN FRONT, FRAME 8 AT THE BACK",
+ tx(selectedWave==16?tr("Custom","Personnelle"):u(waveNames[selectedWave]),989,170,135,24,14,CYAN,true);
+ tx(tr("DRAG UP / DOWN TO MORPH - FRAME 1 IN FRONT","GLISSER HAUT / BAS POUR MORPHER - FORME 1 DEVANT"),
      526,535,570,23,11,MUTE,true);
- tx("FRAMES OF THE TABLE · CLICK TO JUMP TO A FRAME",457,576,572,20,11,MUTE,true);
+ tx(tr("FRAMES OF THE TABLE - CLICK TO SELECT","FORMES DE LA TABLE - CLIQUER POUR SÉLECTIONNER"),457,576,572,20,11,MUTE,true);
  for(int frame=0;frame<8;frame++){
   const float x=458+frame*85.f;
   const bool active=(int)std::round(val(serenity::position)*7.f)==frame;
@@ -714,7 +715,7 @@ void Painter::editor(){
  tx(tr("HARMONICS 1-32 / RELATIVE LEVEL","HARMONIQUES 1-32 / NIVEAU RELATIF"),1167,388,318,20,10,MUTE,true);
  panel(1157,422,330,219,"OUTPUT WAVEFORM");
  wavetableWave(1169,462,306,142,selectedOsc,selectedWave,val(serenity::position),CYAN,.96f);
- tx("GREY = TABLE · COLOUR = AFTER WARP + SHAPE",1166,607,310,21,10,MUTE);
+ tx(tr("GREY = TABLE / COLOUR = WARP + SHAPE","GRIS = TABLE / COULEUR = WARP + FORME"),1166,607,310,21,10,MUTE);
  panel(1157,650,330,191,"POSITION SWEEP",PURPLE);
  button(1169,689,305,34,"SWEEP POSITION WITH LFO 1",true,PURPLE);
  knob(1205,769,23,"LFO 1 RATE",serenity::lfoRate,PURPLE);
