@@ -665,15 +665,18 @@ void Painter::editor(){
  button(236,648,188,36,tr("CUSTOM TABLE","TABLE PERSONNELLE").toRawUTF8(),selectedWave==serenity::waveCount,PURPLE);
  tx(tr("Drop a WAV / AIFF file on this page.","Déposer un fichier WAV / AIFF sur cette page."),23,690,400,20,11,MUTE);
  tx(tr("Choose a compatible cycle length.","Choisir ensuite la taille du cycle."),23,710,400,17,10,MUTE);
- tx(tr("8 FRAMES / 512 SAMPLES PER FRAME","8 FORMES / 512 ÉCHANTILLONS PAR FORME"),23,732,388,22,11,MUTE,true);
- tx(tr("BAND-LIMITED IN 9 SPECTRAL LEVELS","9 NIVEAUX SPECTRAUX ANTI-ALIASING"),23,754,390,22,11,MUTE);
+ const int hdFrames=selectedWave==serenity::waveCount?dsp.getHdFrameCount(selectedOsc):0;
+ const int frameCount=hdFrames>0?hdFrames:8;
+ tx(juce::String(frameCount)+tr(" FRAMES / "," FORMES / ")+juce::String(hdFrames?2048:512)+tr(" SAMPLES"," ÉCHANTILLONS"),23,732,388,22,11,MUTE,true);
+ tx(hdFrames?tr("HD / 11 SPECTRAL LEVELS","HD / 11 NIVEAUX SPECTRAUX"):tr("9 SPECTRAL LEVELS","9 NIVEAUX SPECTRAUX"),23,754,390,22,11,MUTE);
+ if(hdFrames)tx(tr("HD playback / editing via conversion","Lecture HD / édition après conversion"),23,778,390,18,10,MUTE);
  panel(446,118,701,723,
        (u("3D WAVETABLE · OSC ")+juce::String::charToString((juce_wchar)('A'+selectedOsc))).toRawUTF8());
  button(946,122,194,23,"WARP + SHAPE PREVIEW",true,GOLD);
  waves3d(459,156,675,416,selectedOsc,selectedWave,val(serenity::position));
  tx("POSITION",473,166,140,22,11,MUTE,true);
  tx(juce::String(val(serenity::position),2),474,187,125,41,28,TYPE,true);
- tx("FRAME "+juce::String(1.f+val(serenity::position)*7.f,1)+" / 8",
+ tx(tr("FRAME ","FORME ")+juce::String(1.f+val(serenity::position)*(frameCount-1),1)+" / "+juce::String(frameCount),
     474,225,145,18,11,MUTE);
  const char* waveNames[]={"Classic","Analog Saw","Pulse Sweep","Hollow Square",
   "Reso Saw","Vowel Choir","Spectral Peak","FM Bell","FM E-Piano","Metal",
@@ -686,7 +689,7 @@ void Painter::editor(){
   const float x=458+frame*85.f;
   const bool active=(int)std::round(val(serenity::position)*7.f)==frame;
   wavetableWave(x,603,75,63,selectedOsc,selectedWave,(float)frame/7.f,active?GOLD:CYAN,.82f,false);
-  tx(juce::String(frame+1),x+20,663,36,17,10,active?GOLD:MUTE,true,1);
+  tx(juce::String(1+(int)std::lround((frameCount-1)*frame/7.f)),x+14,663,48,17,10,active?GOLD:MUTE,true,1);
  }
  knob(498,714,26,"POSITION",serenity::position,CYAN);
  const char* wm[]={"Off","Bend","PWM","Sync"};

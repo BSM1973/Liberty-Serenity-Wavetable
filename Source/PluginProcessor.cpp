@@ -445,6 +445,7 @@ float SerenityAudioProcessor::getWavetablePreview(int osc,int wave,float positio
   phase=serenity::oscillatorWarpPhase(phase,getValue(serenity::oscAWarp+osc),
                                     (int)std::lround(getValue(serenity::oscAWarpMode+osc)));
  phase-=std::floor(phase);
+ if(wave==serenity::waveCount){if(auto hd=getHdTable(osc)){float raw=hd->preview(phase,position);return transformed?serenity::oscillatorShape(raw,getValue(serenity::oscAShape+osc),(int)std::lround(getValue(serenity::oscAShapeMode+osc))):raw;}}
  const float f=juce::jlimit(0.f,1.f,position)*7.f;
  const int a=(int)f,b=std::min(7,a+1);
  const float z=f-(float)a;
@@ -476,6 +477,18 @@ void SerenityAudioProcessor::commitCustomFrame(int oscillator,int frame,
  }
  rebuildCustomFrame(oscillator,frame);
 }
+std::shared_ptr<const serenity::HdTable> SerenityAudioProcessor::getHdTable(int osc)const {
+ if(osc<0||osc>=serenity::editableOscillators)return {};
+ return hdTables[(size_t)osc].snapshot();
+}
+int SerenityAudioProcessor::getHdFrameCount(int osc)const {auto hd=getHdTable(osc);return hd?hd->frames:0;}
+void SerenityAudioProcessor::reduceHdToEditable(int osc){
+ auto hd=getHdTable(osc);if(!hd)return;
+ serenity::ImportedWavetable data{};
+ if(!serenity::convertWavetable(hd->pcm.data(),(int)hd->pcm.size(),serenity::hdSamples,data))return;
+ for(int f=0;f<serenity::editableFrames;f++)commitCustomFrame(osc,f,data[(size_t)f]);
+ hdTables[(size_t)osc].publish({});
+}
 juce::Result SerenityAudioProcessor::importWavetableFile(const juce::File& file,int osc,int cycleLength){
  auto error=[&](const char* en,const char* fr){return juce::Result::fail(juce::String::fromUTF8(french()?fr:en));};
  if(osc<0||osc>=serenity::editableOscillators)return error("Invalid oscillator.","Oscillateur invalide.");
@@ -487,13 +500,18 @@ juce::Result SerenityAudioProcessor::importWavetableFile(const juce::File& file,
  if(channels<1||channels>2)return error("Only mono or stereo files.","Fichiers mono ou stéréo uniquement.");
  if(cycleLength==0)cycleLength=count;
  if(cycleLength<2||count%cycleLength!=0)return error("File length does not match cycle size.","Longueur incompatible avec la taille du cycle.");
+ if(cycleLength>4096||count/cycleLength>serenity::hdMaxFrames)return error("HD: max 256 frames, source cycles up to 4096 samples.","HD : 256 formes maximum, cycles source de 4096 échantillons maximum.");
  juce::AudioBuffer<float> source(channels,count);
  if(!reader->read(&source,0,count,0,true,channels==2))return error("Audio read failed.","Échec de lecture audio.");
  std::vector<float> mono((size_t)count);
  for(int i=0;i<count;i++)mono[(size_t)i]=channels==2?.5f*(source.getSample(0,i)+source.getSample(1,i)):source.getSample(0,i);
+ auto hdPcm=serenity::hdConvert(mono.data(),count,cycleLength);
+ if(hdPcm.empty())return error("Invalid HD waveform.","Forme d'onde HD invalide.");
+ auto hd=std::make_shared<const serenity::HdTable>(std::move(hdPcm));
  serenity::ImportedWavetable data{};
  if(!serenity::convertWavetable(mono.data(),count,cycleLength,data))return error("Invalid waveform samples.","Échantillons de forme d'onde invalides.");
  for(int f=0;f<serenity::editableFrames;f++)commitCustomFrame(osc,f,data[(size_t)f]);
+ hdTables[(size_t)osc].publish(std::move(hd));
  setValue(serenity::oscAWave+osc,(float)serenity::waveCount);
  return juce::Result::ok();
 }
@@ -590,6 +608,7 @@ void SerenityAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce:
  buffer.clear();
  if(buffer.getNumChannels()<2)return;
  engine.setParams(buildParams());
+ for(int o=0;o<serenity::editableOscillators;o++)engine.setHdTable(o,hdTables[(size_t)o].consume());
  // Only changed frames are copied at block boundaries. Do not spin on a writer.
  // Snapshot into fixed stack storage; if a UI edit occurs midway, discard it
  // and retain the previous completed spectrum until the following block.
@@ -817,6 +836,11 @@ void SerenityAudioProcessor::getStateInformation(juce::MemoryBlock& dest){
   waveBytes.append(&value,sizeof(value));
  }
  state.setProperty("customWavetablePCM",waveBytes.toBase64Encoding(),nullptr);
+ for(int o=0;o<serenity::editableOscillators;o++){
+  auto hd=getHdTable(o);const auto key="customHdPCM"+juce::String(o);
+  state.removeProperty(key,nullptr);
+  if(hd){juce::MemoryBlock raw(hd->pcm.data(),hd->pcm.size()*sizeof(float));state.setProperty(key,raw.toBase64Encoding(),nullptr);}
+ }
  state.setProperty("sequenceMode",sequenceMode.load(),nullptr);
  state.setProperty("sequenceBank",sequenceBank.load(),nullptr);
  state.setProperty("sequenceLength",sequenceLength.load(),nullptr);
@@ -878,6 +902,18 @@ void SerenityAudioProcessor::setStateInformation(const void* data,int size){
    for(int o=0;o<serenity::editableOscillators;o++)
     for(int f=0;f<serenity::editableFrames;f++)
      rebuildCustomFrame(o,f);
+  }
+  for(int o=0;o<serenity::editableOscillators;o++){
+   const auto key="customHdPCM"+juce::String(o);
+   auto encodedHd=state.getProperty(key,"").toString();
+   std::shared_ptr<const serenity::HdTable> hd;
+   juce::MemoryBlock raw;const size_t limit=(size_t)serenity::hdMaxFrames*serenity::hdSamples*sizeof(float);
+   if(encodedHd.length()<=int(limit*2)&&encodedHd.isNotEmpty()&&raw.fromBase64Encoding(encodedHd)&&raw.getSize()>0&&raw.getSize()<=limit&&raw.getSize()%(serenity::hdSamples*sizeof(float))==0){
+    std::vector<float> pcm(raw.getSize()/sizeof(float));std::memcpy(pcm.data(),raw.getData(),raw.getSize());
+    bool valid=true;for(float& v:pcm){if(!std::isfinite(v)){valid=false;break;}v=std::clamp(v,-1.f,1.f);}
+    if(valid)hd=std::make_shared<const serenity::HdTable>(std::move(pcm));
+   }
+   hdTables[(size_t)o].publish(std::move(hd));state.removeProperty(key,nullptr);
   }
   apvts.replaceState(state);
  }

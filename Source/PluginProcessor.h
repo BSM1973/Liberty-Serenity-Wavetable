@@ -248,6 +248,9 @@ public:
                            bool applyTransforms=true) const noexcept;
  void commitCustomFrame(int oscillator,int frame,const std::array<float,serenity::editableSamples>& points) noexcept;
  juce::Result importWavetableFile(const juce::File& file,int oscillator,int cycleLength);
+ std::shared_ptr<const serenity::HdTable> getHdTable(int osc)const;
+ int getHdFrameCount(int osc)const;
+ void reduceHdToEditable(int osc);
  void normalizeCustomFrame(int oscillator,int frame) noexcept;
  void removeCustomDc(int oscillator,int frame) noexcept;
  void copyCustomFrame(int oscillator,int from,int to) noexcept;
@@ -296,6 +299,7 @@ public:
  static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 private:
  serenity::Engine engine;
+ std::array<serenity::HdExchange,serenity::editableOscillators> hdTables;
  std::array<std::atomic<float>,serenity::editableTotal> customPoints{};
  // Published by editor/host thread, read atomically by the audio callback.
  // Per-frame seqlock: odd while writing; even when complete. Never block/spin on audio.

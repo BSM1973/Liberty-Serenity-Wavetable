@@ -365,7 +365,7 @@ void SerenityEditor::showParameterMenu(int index){
  menu.addSectionHeader(juce::String(spec.id));
  menu.addItem(1,tr("Apprentissage MIDI CC","MIDI CC Learn"));
  menu.addItem(2,tr("Effacer l'association MIDI","Clear MIDI mapping"),synth.mappedCC(index)>=0);
- menu.addItem(3,tr("Réinitialiser le paramètre","Reset parameter"));
+ menu.addItem(3,tr("Réinitialiser le paramètre","Reset parameter"),synth.getHdFrameCount(selectedOsc)==0);
  juce::Component::SafePointer<SerenityEditor> safe(this);
  menu.showMenuAsync(juce::PopupMenu::Options(),[safe,index,spec](int selected){
   if(!safe)return;
@@ -565,6 +565,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   if(p.x>=1171&&p.x<=1468&&p.y>=161&&p.y<=374){
    if(e.mods.isRightButtonDown()){showWavetableMenu();return;}
    if(e.mods.isLeftButtonDown()){
+    if(synth.getHdFrameCount(selectedOsc)>0){showWavetableMenu();return;}
     synth.setValue(serenity::oscAWave+selectedOsc,(float)serenity::waveCount);
     drawingHarmonic=true;drawCustomHarmonic(p);
    }
@@ -574,6 +575,7 @@ void SerenityEditor::mouseDown(const juce::MouseEvent& e){
   if(p.x>=1168&&p.x<=1472&&p.y>=465&&p.y<=611) {
    if(e.mods.isRightButtonDown()){showWavetableMenu();return;}
    if(!e.mods.isLeftButtonDown())return;
+   if(synth.getHdFrameCount(selectedOsc)>0){showWavetableMenu();return;}
    synth.setValue(serenity::oscAWave+selectedOsc,(float)serenity::waveCount);
    drawingCustom=true;customDrawLastSample=-1;
    drawCustomPoint(p);return;
@@ -999,8 +1001,8 @@ void SerenityEditor::chooseWavetableCycle(int osc,const juce::File& file){
  juce::PopupMenu choices;
  choices.addSectionHeader(file.getFileName());
  choices.addSectionHeader(tr("Taille du cycle source","Source cycle length"));
- choices.addItem(1,tr("Cycle unique : ","Single cycle: ")+juce::String(count)+tr(" échantillons"," samples"));
- for(int n:{256,512,1024,2048,4096})if(count>=n&&count%n==0){
+ choices.addItem(1,tr("Cycle unique : ","Single cycle: ")+juce::String(count)+tr(" échantillons"," samples"),count<=4096);
+ for(int n:{256,512,1024,2048,4096})if(count>=n&&count%n==0&&count/n<=serenity::hdMaxFrames){
   const int frames=count/n;
   choices.addItem(n,juce::String(n)+tr(" éch. / cycle - "," samples / cycle - ")+juce::String(frames)+tr(" formes"," frames"));
  }
@@ -1022,7 +1024,7 @@ void SerenityEditor::performWavetableImport(int osc,const juce::File& file,int c
  redoHistory.clear();
  selectedOsc=osc;selectedCustomFrame=0;
  synth.setValue(serenity::position,0.f);customEditorTouched=true;
- showStatus(tr("Import réussi : 8 formes. ","Imported: 8 frames. ")+file.getFileNameWithoutExtension());
+ showStatus(tr("Import HD : ","HD import: ")+juce::String(synth.getHdFrameCount(osc))+tr(" formes / 2048 éch. "," frames / 2048 samples. ")+file.getFileNameWithoutExtension());
  repaint();
 }
 
@@ -1032,10 +1034,12 @@ void SerenityEditor::showWavetableMenu(){
  menu.addItem(1,tr("Importer une wavetable WAV / AIFF...","Import WAV / AIFF wavetable..."));
  menu.addItem(2,tr("Activer la table personnalisée","Use custom wavetable"));
  menu.addItem(3,tr("Normaliser l'image sélectionnée","Normalize selected frame"));
- menu.addItem(4,tr("Supprimer l'offset continu","Remove DC offset"));
- menu.addItem(5,tr("Dupliquer vers l'image suivante","Duplicate to next frame"));
- menu.addItem(6,tr("Réinitialiser cette image","Reset this frame"));
- menu.addItem(7,tr("Exporter les huit images en WAV...","Export eight frames as WAV..."));
+ menu.addItem(4,tr("Supprimer l'offset continu","Remove DC offset"),synth.getHdFrameCount(selectedOsc)==0);
+ menu.addItem(5,tr("Dupliquer vers l'image suivante","Duplicate to next frame"),synth.getHdFrameCount(selectedOsc)==0);
+ menu.addItem(6,tr("Réinitialiser cette image","Reset this frame"),synth.getHdFrameCount(selectedOsc)==0);
+ const bool hd=synth.getHdFrameCount(selectedOsc)>0;
+ menu.addItem(7,tr("Exporter la table en WAV...","Export wavetable as WAV..."));
+ if(hd)menu.addItem(19,tr("Convertir en 8 formes pour édition (perte HD)","Convert to 8 editable frames (reduces HD)"));
  juce::PopupMenu spectra;
  spectra.addItem(10,tr("Filtre spectral : 16 harmoniques","Spectral filter: 16 harmonics"));
  spectra.addItem(11,tr("Filtre spectral : 32 harmoniques","Spectral filter: 32 harmonics"));
@@ -1047,12 +1051,14 @@ void SerenityEditor::showWavetableMenu(){
  spectra.addItem(17,tr("Lissage spectral : 64 harmoniques","Spectral smoothing: 64 harmonics"));
  spectra.addSeparator();
  spectra.addItem(18,tr("Morphing des images 1 à 8","Morph frames 1 to 8"));
- menu.addSubMenu(tr("TRAITEMENTS SPECTRAUX","SPECTRAL PROCESSING"),spectra);
+ menu.addSubMenu(tr("TRAITEMENTS SPECTRAUX","SPECTRAL PROCESSING"),spectra,!hd);
  const int osc=selectedOsc,frame=selectedCustomFrame;
  juce::Component::SafePointer<SerenityEditor> safe(this);
  menu.showMenuAsync(juce::PopupMenu::Options(),[safe,osc,frame](int choice){
   if(!safe||choice<=0)return;
   if(choice==1){safe->importWavetableAudio(osc);return;}
+  if(choice==19){safe->rememberUndo();safe->synth.reduceHdToEditable(osc);safe->synth.setValue(serenity::oscAWave+osc,(float)serenity::waveCount);safe->showStatus(safe->tr("Table convertie en 8 formes éditables.","Converted to 8 editable frames."));safe->repaint();return;}
+  if(safe->synth.getHdFrameCount(osc)>0&&choice!=2&&choice!=7)return;
   if(choice==7){
    safe->fileChooser=std::make_unique<juce::FileChooser>(
     safe->tr("Exporter ma wavetable","Export custom wavetable"),
@@ -1065,6 +1071,13 @@ void SerenityEditor::showWavetableMenu(){
      juce::File file=chooser.getResult();
      if(file==juce::File{})return;
      if(file.getFileExtension().isEmpty())file=file.withFileExtension(".wav");
+     auto hd=nested->synth.getHdTable(osc);
+     if(hd){
+      juce::MemoryOutputStream out;const int count=(int)hd->pcm.size();
+      out.write("RIFF",4);out.writeInt(36+count*4);out.write("WAVEfmt ",8);out.writeInt(16);out.writeShort(3);out.writeShort(1);out.writeInt(44100);out.writeInt(176400);out.writeShort(4);out.writeShort(32);out.write("data",4);out.writeInt(count*4);
+      for(float v:hd->pcm)out.writeFloat(v);
+      nested->showStatus(file.replaceWithData(out.getData(),out.getDataSize())?nested->tr("Table HD WAV exportée.","HD WAV exported."):nested->tr("Échec export HD.","HD export failed."));return;
+     }
      std::vector<unsigned char> bytes;
      bytes.reserve(44+serenity::editableFrames*serenity::editableSamples*2);
      auto push16=[&bytes](int x){bytes.push_back((unsigned char)(x&255));bytes.push_back((unsigned char)((x>>8)&255));};

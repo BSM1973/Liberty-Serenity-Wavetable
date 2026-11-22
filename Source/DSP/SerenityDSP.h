@@ -11,6 +11,7 @@
 #include <vector>
 #include "SerenitySequencer.h"
 #include "SerenityCustomWavetable.h"
+#include "SerenityHdWavetable.h"
 #include "SerenityBandlimitedWavetable.h"
 #include "SerenityOscTransform.h"
 
@@ -273,6 +274,7 @@ class Engine {
  WavetableBank bank;
  EditableWavetable customTable{};
  BandlimitedCustomWavetable customBandlimited{};
+ std::array<const HdTable*,generators> hdTables{};
  std::array<Voice,maxVoices> voices{};
  std::array<ModRoute,64> routes{};
  float sr=48000,modWheel=0;
@@ -333,6 +335,7 @@ public:
  }
  // Replaces one immutable fixed-size frame snapshot at a block boundary.
  // FFT and allocation are deliberately absent from this API and render().
+ void setHdTable(int osc,const HdTable* table) noexcept {if(osc>=0&&osc<generators)hdTables[(size_t)osc]=table;}
  void setCustomMipFrame(int oscillator,int frame,const CustomMipFrame& mips) noexcept {
   customBandlimited.setFrame(oscillator,frame,mips);
  }
@@ -445,7 +448,7 @@ public:
                           clamp(p.oscRandPhase[gen],0.f,1.f)*v.phaseJitter[(size_t)gen][(size_t)u];
       const float warped=oscillatorWarpPhase(shifted,p.oscWarp[gen],p.oscWarpMode[gen]);
       float x=(p.wave[gen]==waveCount ?
-       customBandlimited.sample(gen,warped,clamp(p.position+frameMod,0,1),freq,sr) :
+       (hdTables[(size_t)gen]?hdTables[(size_t)gen]->sample(warped,clamp(p.position+frameMod,0,1),freq,sr):customBandlimited.sample(gen,warped,clamp(p.position+frameMod,0,1),freq,sr)) :
        bank.sample(p.wave[gen],warped,clamp(p.position+frameMod,0,1),freq,sr));
       const float outer=uni==1?0.f:std::abs((2.f*u)/(uni-1)-1.f);
       const float blendGain=1.f-.65f*clamp(p.oscBlend[gen],0.f,1.f)*outer;

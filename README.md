@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.1.1 — import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.0 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -21,7 +21,7 @@ Version 1.1.1 — import WAV/AIFF à taille de cycle explicite, basé sur la ver
 
 ## Importer ses tables d'ondes
 
-Dans WAVETABLE EDITOR, sélectionner A, B, C ou D, puis IMPORTER WAV / AIFF. Choisir le fichier, ou le déposer directement sur la page. Le menu affiche le nombre de formes et les tailles de cycle compatibles avec sa longueur. Choisir un cycle unique ou 256/512/1024/2048/4096 échantillons par cycle selon la source. Les fichiers mono/stéréo sont convertis en huit formes de 512 échantillons, avec interpolation entre cycles et filtrage périodique avant réduction. La table personnalisée est activée et enregistrée dans l'état du plugin. TABLE PERSONNELLE permet de revenir à la table importée après sélection d'une table d'usine. Limite : deux millions d'échantillons par fichier, longueur multiple de la taille de cycle ; pas de détection automatique de hauteur ni d'import de formats propriétaires.
+Dans WAVETABLE EDITOR, sélectionner A, B, C ou D, puis IMPORTER WAV / AIFF. Choisir le fichier, ou le déposer directement sur la page. Le menu affiche le nombre de formes et les tailles de cycle compatibles avec sa longueur. Choisir un cycle unique ou 256/512/1024/2048/4096 échantillons par cycle selon la source. Les fichiers mono/stéréo conservent de 1 à 256 formes, chacune à 2048 échantillons ; les cycles de taille différente sont rééchantillonnés. Morphing continu, 11 niveaux anti-aliasing calculés hors callback. Les tables HD sont sauvegardées dans le projet et exportables en WAV flottant 32 bits. Les outils d'édition 512 points ne sont pas appliqués directement aux tables HD : conversion explicite et annulable vers huit formes via le menu contextuel. Les anciennes tables et presets restent au format historique. La table personnalisée est activée et enregistrée dans l'état du plugin. TABLE PERSONNELLE permet de revenir à la table importée après sélection d'une table d'usine. Limite HD : 256 formes, cycle source jusqu'à 4096 échantillons, longueur multiple de la taille de cycle ; pas de détection automatique de hauteur ni d'import de formats propriétaires.
 
 ## Validation et distribution
 

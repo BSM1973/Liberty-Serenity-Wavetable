@@ -98,6 +98,9 @@ int main(){
  if(imported.failed()){std::cerr<<imported.getErrorMessage()<<std::endl;return 42;}
  if(std::abs(processor.getCustomPoint(3,0,128)-.2f)>.005f||std::abs(processor.getCustomPoint(3,7,128)-.8f)>.005f||std::abs(processor.getCustomPoint(3,3,128)-(.2f+.6f*3.f/7.f))>.005f||processor.getValue(serenity::oscDWave)!=serenity::waveCount)return 43;
  // Verify an invalid import cannot overwrite the recently imported table.
+ if(processor.getHdFrameCount(3)!=4)return 51;
+ auto hd=processor.getHdTable(3);
+ if(!hd||hd->pcm.size()!=4u*2048u||std::abs(hd->preview(.25f,1.f)-.8f)>.005f)return 52;
  const float beforeInvalid=processor.getCustomPoint(3,7,128);
  if(processor.importWavetableFile(importFile.getFile(),3,1000).wasOk()||processor.getCustomPoint(3,7,128)!=beforeInvalid)return 45;
  // Actual stereo AIFF with a single 512-sample cycle; downmix must be 0.4.
@@ -112,6 +115,7 @@ int main(){
  if(!aiffFile.getFile().replaceWithData(aiff.getData(),aiff.getDataSize()))return 46;
  if(processor.importWavetableFile(aiffFile.getFile(),3,0).failed())return 47;
  for(int f=0;f<8;f++)if(std::abs(processor.getCustomPoint(3,f,128)-.4f)>.005f)return 48;
+ if(processor.getHdFrameCount(3)!=1||std::abs(processor.getHdTable(3)->preview(.25f,.7f)-.4f)>.005f)return 53;
  if(std::abs(processor.getCustomPoint(0,4,128)-.73f)>.005f)return 49;
  if(processor.importWavetableFile(importFile.getFile(),3,cycle).failed())return 50;
  // Verify all 64 steps in all four banks can survive AU/VST3 project state roundtrips.
@@ -124,6 +128,8 @@ int main(){
  SerenityAudioProcessor restored;
  restored.setStateInformation(savedState.getData(),(int)savedState.getSize());
  if(std::abs(restored.getCustomPoint(3,7,128)-.8f)>.005f||restored.getValue(serenity::oscDWave)!=serenity::waveCount)return 44;
+ if(restored.getHdFrameCount(3)!=4||restored.getHdTable(3)->pcm!=processor.getHdTable(3)->pcm)return 54;
+ restored.reduceHdToEditable(3);if(restored.getHdFrameCount(3)!=0||std::abs(restored.getCustomPoint(3,7,128)-.8f)>.005f)return 55;
  const auto last=restored.getSequenceStep(3,63);
  if(restored.getSequenceBank()!=3 || restored.getSequenceLength()!=64 ||
     restored.getSequenceMode()!=2 || last.pitch!=-17 ||
