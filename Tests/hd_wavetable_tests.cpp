@@ -40,6 +40,21 @@ int main(){
  auto* old=slots[0].consume();slots[0].publish(bank);slots[0].publish({});slots[0].publish(bank);
  if(std::abs(old->preview(.25f,1)-.85f)>.001f||slots[0].consume()!=bank.get())return 11;
  slots[0].publish({});if(slots[0].consume()!=nullptr||slots[1].consume()==nullptr)return 12;
+ // Compare the optimized unison path to the original complete interpolation.
+ for(int n=0;n<24000;n++){
+  const float position=(float)((n*179u)%10007u)/10006.f;
+  const float phase=((n*313u)%19111u)/19111.f*5.f-2.f;
+  const float hz=20.f+(float)((n*101u)%12000u);
+  const float rate=(n%3==0)?44100.f:(n%3==1)?48000.f:96000.f;
+  const auto prepared=bank->prepareFrame(position);
+  const float original=bank->sample(phase,position,hz,rate);
+  const float optimized=bank->samplePrepared(phase,prepared,hz,rate);
+  if(!std::isfinite(original)||!std::isfinite(optimized)||std::abs(original-optimized)>2.e-6f){
+   std::cerr<<"HD prepared-frame interpolation differs: "<<n<<" "<<original<<" "<<optimized<<"\n";
+   return 14;
+  }
+ }
+ if(bank->samplePrepared(.2f,bank->prepareFrame(-1.f),0.f,48000.f)!=0.f)return 15;
  std::cout<<"HD: 256 x 2048, 4 banks, morph, anti-alias, resampling, publication OK\n";
  return 0;
 }

@@ -50,7 +50,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v1.2.2-HD-Quality-${{ matrix.platform }}
+          name: Serenity-WAVETABLE-v1.2.3-HD-Quality-${{ matrix.platform }}
           path: |
             build/hd-quality.csv
             build/hd-quality-summary.txt
@@ -62,7 +62,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v1.2.2-UI-Previews
+          name: Serenity-WAVETABLE-v1.2.3-UI-Previews
           path: build/Serenity-UI-Preview-*.png
           if-no-files-found: warn
           retention-days: 30
@@ -71,7 +71,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v1.2.2-Original-References
+          name: Serenity-WAVETABLE-v1.2.3-Original-References
           path: Assets/UI/skin_*.png
           if-no-files-found: error
           retention-days: 30
@@ -94,7 +94,7 @@ jobs:
           cp -R build/SerenityWavetable_artefacts/Release/VST3 dist/Serenity-WAVETABLE-macOS-ARM64/
           cp -R build/SerenityWavetable_artefacts/Release/Standalone dist/Serenity-WAVETABLE-macOS-ARM64/
           ditto -c -k --sequesterRsrc --keepParent dist/Serenity-WAVETABLE-macOS-ARM64 \
-            dist/Serenity-WAVETABLE-v1.2.2-macOS-ARM64.zip
+            dist/Serenity-WAVETABLE-v1.2.3-macOS-ARM64.zip
 
       - name: Package Windows VST3 Standalone
         if: runner.os == 'Windows'
@@ -103,12 +103,12 @@ jobs:
           New-Item -ItemType Directory -Force 'dist/Serenity-WAVETABLE-Windows-x64' | Out-Null
           Copy-Item -Recurse 'build/SerenityWavetable_artefacts/Release/VST3' 'dist/Serenity-WAVETABLE-Windows-x64/'
           Copy-Item -Recurse 'build/SerenityWavetable_artefacts/Release/Standalone' 'dist/Serenity-WAVETABLE-Windows-x64/'
-          Compress-Archive -Path 'dist/Serenity-WAVETABLE-Windows-x64' -DestinationPath 'dist/Serenity-WAVETABLE-v1.2.2-Windows-x64.zip' -Force
+          Compress-Archive -Path 'dist/Serenity-WAVETABLE-Windows-x64' -DestinationPath 'dist/Serenity-WAVETABLE-v1.2.3-Windows-x64.zip' -Force
 
       - name: Upload downloadable build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Serenity-WAVETABLE-v1.2.2-Original-UI-${{ matrix.platform }}
+          name: Serenity-WAVETABLE-v1.2.3-Original-UI-${{ matrix.platform }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 30

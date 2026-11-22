@@ -101,6 +101,50 @@ public:
   float x=interp(pcm.data()+(size_t)a*hdSamples,hdSamples,phase),y=interp(pcm.data()+(size_t)b*hdSamples,hdSamples,phase);
   return x+(y-x)*(f-a);
  }
+ // Frame offsets depend only on the morph position, not on the unison
+ // oscillator phase or frequency. Prepare once per generator per sample.
+ struct PreparedFrame {
+  const float* frameA=nullptr;
+  const float* frameB=nullptr;
+  float blend=0.f;
+ };
+ PreparedFrame prepareFrame(float position)const noexcept {
+  if(frames<1||!std::isfinite(position))return {};
+  const float framePos=std::clamp(position,0.f,1.f)*(frames-1);
+  const int a=(int)framePos,b=std::min(a+1,frames-1);
+  return {mips.data()+(size_t)a*hdMipStride(),
+          mips.data()+(size_t)b*hdMipStride(),framePos-a};
+ }
+ // Same interpolation and anti-alias cutoff as sample(), with precomputed
+ // frame base pointers shared across all 1/4/16 unison voices.
+ float samplePrepared(float phase,const PreparedFrame& frame,float hz,float sr)const noexcept {
+  if(!frame.frameA||!std::isfinite(phase)||!std::isfinite(hz)||
+     !std::isfinite(sr)||hz<=0.f||sr<8000.f||hz>=sr*.48f)return 0.f;
+  const float frequencyLimit=sr*.48f;
+  int mip=0;
+  while(mip<hdLevels-1&&hz>frequencyLimit/(float)((hdSamples/2)>>mip))++mip;
+  const float cyclePhase=phase-std::floor(phase);
+  auto atLevel=[&](int m)noexcept{
+   const int len=hdMipLength(m);
+   const float idx=cyclePhase*len;
+   const int i=(int)idx,j=(i+1)&(len-1);
+   const float blend=idx-i;
+   const int offset=hdMipOffset(m);
+   const float* const srcA=frame.frameA+offset;
+   const float x=srcA[i]+(srcA[j]-srcA[i])*blend;
+   if(frame.blend<=0.f)return x;
+   const float* const srcB=frame.frameB+offset;
+   const float y=srcB[i]+(srcB[j]-srcB[i])*blend;
+   return x+(y-x)*frame.blend;
+  };
+  const float x=atLevel(mip);
+  if(mip==hdLevels-1)return x;
+  const float edge=frequencyLimit/(float)((hdSamples/2)>>mip);
+  const float t0=std::clamp((hz-.8f*edge)/(.2f*edge),0.f,1.f);
+  if(t0<=0.f)return x;
+  const float t=t0*t0*(3.f-2.f*t0);
+  return x+(atLevel(mip+1)-x)*t;
+ }
  float sample(float phase,float position,float hz,float sr)const noexcept {
   if(frames<1||!std::isfinite(phase)||!std::isfinite(position)||!std::isfinite(hz)||!std::isfinite(sr)||hz<=0||sr<8000||hz>=sr*.48f)return 0;
   const float frequencyLimit=sr*.48f;

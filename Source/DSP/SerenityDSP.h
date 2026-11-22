@@ -236,6 +236,8 @@ struct StereoReverb {
 };
 struct Voice {
  int note=-1;bool active=false;
+ // Immutable for the lifetime of a MIDI note: no std::pow per active sample.
+ float baseFrequency=0.f;
  float velocity=0,stepGate=0,filterL=0,filterR=0,filter2L=0,filter2R=0;
  float filter3L=0,filter3R=0,filter4L=0,filter4R=0;
  std::array<std::array<FilterChannel,2>,2> filters{};
@@ -247,7 +249,9 @@ struct Voice {
  std::array<float,generators> modSignal{};
  uint64_t age=0;
  void start(int n,float v,uint64_t when) noexcept {
-  note=n;velocity=v;active=true;age=when;amp={};amp.on();
+  note=n;velocity=v;active=true;age=when;
+  baseFrequency=440.f*std::pow(2.f,(n-69)/12.f);
+  amp={};amp.on();
   for(auto &env:envelopes){env={};env.on();}
   filters={};lfoAge=0;
   filterL=filterR=filter2L=filter2R=0;filter3L=filter3R=filter4L=filter4R=0;
@@ -377,6 +381,27 @@ public:
  void allNotesOff() noexcept {for(auto &v:voices) if(v.active){v.amp.off(.01f,sr);for(auto &env:v.envelopes)env.off(.01f,sr);}}
  void render(float *outL,float *outR,int count) noexcept {
   if(!outL||!outR||count<=0)return;
+  // p is block-constant. Cache all unison factors, amplitude normalization
+  // and static parameters once per render call, not per sample or voice.
+  struct UnisonState {
+   int count=1;
+   float start=1.f,step=1.f,amp=0.f,relativeStep=0.f;
+   float phase=0.f,random=0.f,blend=0.f;
+  };
+  std::array<UnisonState,generators> unisonStates{};
+  for(int gen=0;gen<generators;gen++){
+   auto& state=unisonStates[(size_t)gen];
+   state.count=std::max(1,std::min(maxUnison,p.unison[gen]));
+   const float detune=state.count>1?p.detune*.19f/12.f:0.f;
+   state.start=state.count>1?std::exp2(-detune):1.f;
+   state.step=state.count>1?std::exp2(2.f*detune/(state.count-1)):1.f;
+   state.amp=clamp(p.oscLevel[gen],0.f,1.f)/std::sqrt((float)state.count);
+   state.relativeStep=state.count>1?2.f/(state.count-1):0.f;
+   state.phase=clamp(p.oscPhase[gen],0.f,1.f);
+   state.random=clamp(p.oscRandPhase[gen],0.f,1.f);
+   state.blend=.65f*clamp(p.oscBlend[gen],0.f,1.f);
+  }
+  const auto ampSettings=p.amplitude();
   for(int n=0;n<count;n++){
    float l=0,r=0;
    const SequenceFrame seq=sequence.tick();
@@ -391,13 +416,15 @@ public:
     ph+=lfoFrequency(cfg,k==0?p.lfoRate:cfg.rate,hostTempo)/sr;ph-=std::floor(ph);
    }
    const float lfo=lfos[0];
+   // Filter cutoff without per-voice routing is common to all active notes.
+   const float globalCutoff=25.f*std::pow(800.f,
+     clamp(p.cutoff+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0.f,1.f));
    int countActive=0;
    for(auto &v:voices){
     if(!v.active) continue;
     // Retrigger the envelope on every played step without reallocating voices.
     if(retrigger){v.amp.on();for(auto &envelope:v.envelopes)envelope.on();}
     v.lfoAge+=1.f/sr;
-    const auto ampSettings=p.amplitude();
     float env=v.amp.next(ampSettings,sr)*mix(1.f,v.velocity,ampSettings.velocity);
     // Keep voice allocation intact while steps gate/retrigger the held note.
     // Short smoothing avoids clicks at step/rest boundaries.
@@ -426,43 +453,45 @@ public:
       default:break;
      }
     }
-    float vCutoff=25.f*std::pow(800.f,clamp(p.cutoff+filterMod+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0,1));
+    float vCutoff=filterMod==0.f?globalCutoff:
+     25.f*std::pow(800.f,clamp(p.cutoff+filterMod+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0.f,1.f));
     float vl=0,vr=0;
-    const float noteBaseHz=noteHz(v.note);
+    const float noteBaseHz=v.baseFrequency;
     const auto prior=v.modSignal;v.modSignal.fill(0.f);
+    const float framePosition=clamp(p.position+frameMod,0.f,1.f);
     for(int gen=0;gen<generators;gen++){
      float level=clamp(p.oscLevel[gen],0,1);
      if(level<.00001f)continue;
-     int uni=std::max(1,std::min(maxUnison,p.unison[gen]));
+     const auto& us=unisonStates[(size_t)gen];
+     const int uni=us.count;
      float base=noteBaseHz*std::exp2((p.oscPitch[gen]
       +p.oscOctave[gen]*12.f+p.oscSemi[gen]+p.oscFine[gen]*.01f
       +pitchMod+(float)seq.pitch)/12.f);
      const float mod=gen==0?prior[1]*p.fmBA+prior[2]*p.fmCA:gen==1?prior[2]*p.fmCB:0.f;
-     // FM modulation and unison detuning are identical for each oscillator
-     // unit except for detune index: compute exp2 outside the hot inner loop.
      if(p.fmMode==1)base*=std::exp2(clamp(mod,-1.f,1.f)*2.f);
-     const float startDetune=uni>1?p.detune*.19f/12.f:0.f;
-     float unisonPitch=uni>1?std::exp2(-startDetune):1.f;
-     const float unisonStep=uni>1?std::exp2(2.f*startDetune/(uni-1)):1.f;
-     float amp=level/std::sqrt((float)uni);
+     const float phaseMod=p.fmMode==0?mod*.5f:0.f;
+     float unisonPitch=us.start;
+     const float amp=us.amp;
+     const HdTable* const hd=p.wave[gen]==waveCount?hdTables[(size_t)gen]:nullptr;
+     const HdTable::PreparedFrame prepared=hd?hd->prepareFrame(framePosition):HdTable::PreparedFrame{};
      for(int u=0;u<uni;u++){
       const float freq=clamp(base*unisonPitch,1.f,sr*.45f);
-      unisonPitch*=unisonStep;
+      unisonPitch*=us.step;
       float &ph=v.phase[gen][u];
-      const float shifted=ph+(p.fmMode==0?mod*.5f:0.f)+clamp(p.oscPhase[gen],0.f,1.f)+
-                          clamp(p.oscRandPhase[gen],0.f,1.f)*v.phaseJitter[(size_t)gen][(size_t)u];
+      const float shifted=ph+phaseMod+us.phase+
+                          us.random*v.phaseJitter[(size_t)gen][(size_t)u];
       const float warped=oscillatorWarpPhase(shifted,p.oscWarp[gen],p.oscWarpMode[gen]);
       float x=(p.wave[gen]==waveCount ?
-       (hdTables[(size_t)gen]?hdTables[(size_t)gen]->sample(warped,clamp(p.position+frameMod,0,1),freq,sr):customBandlimited.sample(gen,warped,clamp(p.position+frameMod,0,1),freq,sr)) :
-       bank.sample(p.wave[gen],warped,clamp(p.position+frameMod,0,1),freq,sr));
-      const float outer=uni==1?0.f:std::abs((2.f*u)/(uni-1)-1.f);
-      const float blendGain=1.f-.65f*clamp(p.oscBlend[gen],0.f,1.f)*outer;
+       (hd?hd->samplePrepared(warped,prepared,freq,sr):customBandlimited.sample(gen,warped,framePosition,freq,sr)) :
+       bank.sample(p.wave[gen],warped,framePosition,freq,sr));
+      const float relative=uni==1?0.f:(us.relativeStep*u-1.f);
+      const float blendGain=1.f-us.blend*std::abs(relative);
       x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen]);
       v.modSignal[(size_t)gen]+=x*level/(float)uni;
       if(gen==0&&p.ringAmount>0.f){const float carrier=clamp(prior[1]+prior[2],-1.f,1.f);x*=mix(1.f,p.ringMode==0?carrier:.5f*(carrier+1.f),p.ringAmount);}
       x*=amp*blendGain;
       ph+=freq/sr;if(ph>=1.f)ph-=std::floor(ph);
-      float pan=clamp(((uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.spread)+panMod+
+      float pan=clamp(relative*p.spread+panMod+
                        p.oscPan[gen],-1,1);
       vl+=x*(1-pan)*.5f;vr+=x*(1+pan)*.5f;
      }

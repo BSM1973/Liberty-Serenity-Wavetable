@@ -9,6 +9,13 @@
 #include <map>
 int main(){
  using namespace serenity;
+ // Cached MIDI note frequency must exactly preserve the previous per-sample
+ // fundamental at every legal MIDI note number.
+ for(int note=0;note<128;note++){
+  Voice voice;voice.start(note,.75f,1);
+  const float before=440.f*std::pow(2.f,(note-69)/12.f);
+  assert(std::isfinite(voice.baseFrequency)&&voice.baseFrequency==before);
+ }
  const auto &presets=factoryPresets();
  assert(presets.size()==100);
  std::map<std::string,int> counts;

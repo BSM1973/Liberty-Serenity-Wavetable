@@ -144,7 +144,7 @@ int main(){
   for(bool hd:{false,true})if(!run(hd,rate,block,32,1,.4))return fail(report,"32-note render or allocation check");
  }
  for(bool hd:{false,true})if(!run(hd,48000,256,32,4,2.))return fail(report,"32-note unison-4 sustained render");
- for(bool hd:{false,true})if(!run(hd,48000,128,32,16,.25))return fail(report,"maximum unison stress");
+ for(bool hd:{false,true})if(!run(hd,48000,128,32,16,.5))return fail(report,"maximum unison stress");
  if(!run(true,48000,256,32,1,10.))return fail(report,"10-second HD sustained render");
  // Concurrent publications: audio consumes immutable front while producer rotates slots.
  std::atomic<bool> producerDone{false},bad{false};std::atomic<int> observed{0};
