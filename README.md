@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.5 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.6 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -38,6 +38,14 @@ Le traitement de saturation, les états de filtre, les quinze types, les répons
 À 32 notes, quatre oscillateurs et unisson 4× ou 16×, le moteur met en cache les coefficients de désaccordage et de panoramique par bloc, mutualise le facteur de hauteur MIDI par oscillateur et par échantillon quand la modulation de hauteur individuelle est nulle, calcule les incréments des huit LFO par bloc et partage la sélection de formes HD entre les voix lorsque leur position n'est pas modulée individuellement. Les chemins avec modulation individuelle restent inchangés. Aucun niveau spectral, forme, preset, polyphonie, modulation ou fréquence d'échantillonnage n'a été retiré.
 
 Le workflow construit les deux mêmes benchmarks C++ contre le DSP de référence v1.2.4 (commit épinglé) et le DSP actuel, puis les exécute en alternance sur le même runner macOS/Windows. Il publie les temps moyens, les percentiles 99 et les différences d'échantillons stéréo de sortie. Il refuse une dérive de fidélité supérieure aux seuils fixés. Ces comparaisons réduisent l'effet des différences entre runners, sans garantir le temps réel sur ordinateur personnel.
+
+## Optimisation HD v1.2.6 : fréquence et bande spectrale préparées par voix
+
+Lorsque la hauteur d'une note reste stable, la fréquence des 1 à 16 oscillateurs d'unisson, leur incrément de phase et leur niveau de filtrage anti-aliasing sont préparés une fois au début du bloc audio pour chaque voix et générateur. Les données préparées résident dans le moteur, pas sur la pile du callback audio. Les 256 formes, les 2048 échantillons, les 11 niveaux spectraux et les quatre oscillateurs restent inchangés.
+
+En cas de pitch bend par modulation, transposition du séquenceur, ou FM de fréquence non nulle, le moteur utilise immédiatement l'ancien chemin dynamique, qui recalcule les fréquences et le niveau spectral à chaque échantillon. Les modifications de morphing des tables et les 15 modes de filtre ne sont pas modifiés.
+
+Le nouveau banc A/B compare la v1.2.6 à la v1.2.5 sur chaque runner macOS/Windows, avec des scénarios supplémentaires de FM dynamique et de modulation matricielle. Il vérifie la précision des échantillons audio, les temps moyens, les pics p99 et la polyphonie. Aucun gain n'est considéré comme acquis avant lecture des rapports.
 
 ## Validation et distribution
 

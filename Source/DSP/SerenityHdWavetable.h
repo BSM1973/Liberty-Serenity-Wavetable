@@ -117,6 +117,47 @@ public:
  }
  // Same interpolation and anti-alias cutoff as sample(), with precomputed
  // frame base pointers shared across all 1/4/16 unison voices.
+ // A frequency-dependent spectral plan does not depend on phase or morph
+ // position. It may be reused across a whole block while pitch stays fixed.
+ struct PreparedSpectral {
+  int mip=0;
+  float blend=0.f;
+  bool valid=false;
+ };
+ static PreparedSpectral prepareSpectral(float hz,float sr) noexcept {
+  if(!std::isfinite(hz)||!std::isfinite(sr)||hz<=0.f||
+     sr<8000.f||hz>=sr*.48f)return {};
+  const float limit=sr*.48f;
+  int mip=0;
+  while(mip<hdLevels-1&&hz>limit/(float)((hdSamples/2)>>mip))++mip;
+  if(mip==hdLevels-1)return {mip,0.f,true};
+  const float edge=limit/(float)((hdSamples/2)>>mip);
+  const float t0=std::clamp((hz-.8f*edge)/(.2f*edge),0.f,1.f);
+  // Match the legacy smoothstep operation order exactly.
+  const float t=t0*t0*(3.f-2.f*t0);
+  return {mip,t,true};
+ }
+ float samplePreparedSpectral(float phase,const PreparedFrame& frame,
+                             const PreparedSpectral& spectral)const noexcept {
+  if(!frame.frameA||!spectral.valid||!std::isfinite(phase))return 0.f;
+  const float cyclePhase=phase-std::floor(phase);
+  auto atLevel=[&](int m)noexcept{
+   const int len=hdMipLength(m);
+   const float idx=cyclePhase*len;
+   const int i=(int)idx,j=(i+1)&(len-1);
+   const float blend=idx-i;
+   const int offset=hdMipOffset(m);
+   const float* const srcA=frame.frameA+offset;
+   const float x=srcA[i]+(srcA[j]-srcA[i])*blend;
+   if(frame.blend<=0.f)return x;
+   const float* const srcB=frame.frameB+offset;
+   const float y=srcB[i]+(srcB[j]-srcB[i])*blend;
+   return x+(y-x)*frame.blend;
+  };
+  const float x=atLevel(spectral.mip);
+  if(spectral.mip==hdLevels-1||spectral.blend<=0.f)return x;
+  return x+(atLevel(spectral.mip+1)-x)*spectral.blend;
+ }
  float samplePrepared(float phase,const PreparedFrame& frame,float hz,float sr)const noexcept {
   if(!frame.frameA||!std::isfinite(phase)||!std::isfinite(hz)||
      !std::isfinite(sr)||hz<=0.f||sr<8000.f||hz>=sr*.48f)return 0.f;

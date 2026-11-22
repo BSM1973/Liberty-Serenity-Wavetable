@@ -1,4 +1,4 @@
-// Same source is compiled against v1.2.4 and candidate DSP headers.
+// Same source is compiled against v1.2.5 and candidate DSP headers.
 // Runs on the same GitHub Actions runner in alternating A/B order.
 #include "SerenityDSP.h"
 #include <algorithm>
@@ -14,12 +14,14 @@
 #include <vector>
 using namespace serenity;
 using Clock=std::chrono::steady_clock;
-struct Scenario {const char* name;int rate,block,unison;bool twoFilters;int blocks;};
+struct Scenario {const char* name;int rate,block,unison;bool twoFilters;int blocks;int variant=0;};
 constexpr Scenario scenarios[]={
  {"u4_48k_b256",48000,256,4,false,52},
  {"u16_48k_b128",48000,128,16,false,45},
  {"u16_96k_b256",96000,256,16,false,45},
- {"u4_48k_b256_f2",48000,256,4,true,52}
+ {"u4_48k_b256_f2",48000,256,4,true,52},
+ {"u4_48k_b256_dynamic_fm",48000,256,4,false,42,1},
+ {"u4_48k_b256_pitch_morph",48000,256,4,false,42,2}
 };
 static double quantile(std::vector<double> v,double p){
  std::sort(v.begin(),v.end());
@@ -47,8 +49,10 @@ int main(int argc,char** argv){
   p.delay=.12f;p.reverb=.12f;p.modFxMix=.12f;p.compMix=.2f;
   p.detune=.31f;p.spread=.55f;p.position=.37f;
   if(sc.twoFilters){p.filter2On=true;p.filter2Mix=.65f;p.filter2Key=.15f;p.filter1Key=.21f;}
+  if(sc.variant==1){p.fmMode=1;p.fmBA=.35f;p.fmCA=.22f;p.fmCB=.18f;}
   for(int g=0;g<4;g++){p.oscLevel[g]=.18f;p.wave[g]=waveCount;p.unison[g]=sc.unison;engine->setHdTable(g,tables[(size_t)g].get());}
   engine->setParams(p);
+  if(sc.variant==2){engine->route(0)={14,0,.36f};engine->route(1)={0,1,.22f};}
   for(int n=0;n<32;n++)engine->noteOn(36+n,.76f);
   std::vector<float> l((size_t)sc.block),r((size_t)sc.block);
   // Warm up filters and LFO in exactly the same way in both versions.

@@ -55,6 +55,25 @@ int main(){
   }
  }
  if(bank->samplePrepared(.2f,bank->prepareFrame(-1.f),0.f,48000.f)!=0.f)return 15;
+ // 30,000 deterministic cases: spectral precomputation cannot change the
+ // raw phase/morph sample, even at anti-alias band transitions.
+ for(int n=0;n<30000;n++){
+  const float position=((n*239u)%9973u)/9972.f;
+  const float phase=((n*277u)%10037u)/10037.f*3.f-.6f;
+  const float rate=(n%3==0)?44100.f:(n%3==1)?48000.f:96000.f;
+  const float hz=1.f+((n*479u)%47000u);
+  const auto framesPrepared=bank->prepareFrame(position);
+  const auto spectral=HdTable::prepareSpectral(hz,rate);
+  const float before=bank->samplePrepared(phase,framesPrepared,hz,rate);
+  const float after=bank->samplePreparedSpectral(phase,framesPrepared,spectral);
+  if(!std::isfinite(after)||std::abs(before-after)>1.e-7f){
+   std::cerr<<"HD spectral preparation changed audio: "<<n<<" before "<<before<<" after "<<after<<"\\n";
+   return 16;
+  }
+ }
+ if(bank->samplePreparedSpectral(.25f,bank->prepareFrame(.5f),
+     HdTable::prepareSpectral(0.f,48000.f))!=0.f)return 17;
+
  std::cout<<"HD: 256 x 2048, 4 banks, morph, anti-alias, resampling, publication OK\n";
  return 0;
 }

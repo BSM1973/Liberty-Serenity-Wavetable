@@ -287,6 +287,14 @@ class Engine {
  BandlimitedCustomWavetable customBandlimited{};
  std::array<const HdTable*,generators> hdTables{};
  std::array<Voice,maxVoices> voices{};
+ // Block-local note-frequency and spectral plans stay on the engine object,
+ // rather than using ~40 KB of the host audio callback thread's stack.
+ struct VoiceOscPlan {
+  float frequency=0.f,phaseIncrement=0.f;
+  HdTable::PreparedSpectral spectral{};
+ };
+ std::array<std::array<std::array<VoiceOscPlan,maxUnison>,generators>,maxVoices> pitchPlans{};
+
  std::array<ModRoute,64> routes{};
  float sr=48000,modWheel=0;
  std::array<float,8> lfoPhases{},lfoSmooth{};
@@ -425,6 +433,30 @@ public:
     state.pan[(size_t)u]=clamp(relative*p.spread+p.oscPan[gen],-1.f,1.f);
    }
   }
+  // Prepare all fixed-pitch frequencies and spectral levels once per block.
+  // MIDI step transposition, modulation matrix pitch and active FM still use
+  // the original dynamic per-sample path, so their behavior is unchanged.
+  const bool mayUseFixedPitch=p.fmMode!=1||
+       (p.fmBA==0.f&&p.fmCA==0.f&&p.fmCB==0.f);
+  if(mayUseFixedPitch){
+   for(size_t vi=0;vi<voices.size();++vi){
+    const auto& voice=voices[vi];if(!voice.active)continue;
+    for(int gen=0;gen<generators;gen++){
+     if(p.oscLevel[gen]<.00001f)continue;
+     const auto& us=unisonStates[(size_t)gen];
+     const float staticPitch=std::exp2((us.baseSemis+0.f)/12.f);
+     const float base=voice.baseFrequency*staticPitch;
+     const HdTable* const hd=p.wave[gen]==waveCount?hdTables[(size_t)gen]:nullptr;
+     for(int u=0;u<us.count;u++){
+      const float freq=clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);
+      auto& plan=pitchPlans[vi][(size_t)gen][(size_t)u];
+      plan.frequency=freq;
+      plan.phaseIncrement=freq/sr;
+      plan.spectral=hd?HdTable::prepareSpectral(freq,sr):HdTable::PreparedSpectral{};
+     }
+    }
+   }
+  }
   // LFO sync, rate and smoothing are block-invariant even when a note moves.
   std::array<float,8> lfoStep{},lfoAlpha{};
   for(size_t k=0;k<lfoStep.size();k++){
@@ -469,7 +501,8 @@ public:
     if(p.oscLevel[gen]>=.00001f)
      commonPitch[(size_t)gen]=std::exp2((unisonStates[(size_t)gen].baseSemis+(float)seq.pitch)/12.f);
    int countActive=0;
-   for(auto &v:voices){
+   for(size_t voiceIndex=0;voiceIndex<voices.size();++voiceIndex){
+    auto &v=voices[voiceIndex];
     if(!v.active) continue;
     // Retrigger the envelope on every played step without reallocating voices.
     if(retrigger){v.amp.on();for(auto &envelope:v.envelopes)envelope.on();}
@@ -513,30 +546,39 @@ public:
      if(level<.00001f)continue;
      const auto& us=unisonStates[(size_t)gen];
      const int uni=us.count;
-     float base=noteBaseHz*(pitchMod==0.f?commonPitch[(size_t)gen]:
-      std::exp2((us.baseSemis+pitchMod+(float)seq.pitch)/12.f));
+     const bool fixedPitch=mayUseFixedPitch&&pitchMod==0.f&&seq.pitch==0;
+     float base=0.f;
      const float mod=gen==0?prior[1]*p.fmBA+prior[2]*p.fmCA:gen==1?prior[2]*p.fmCB:0.f;
-     if(p.fmMode==1)base*=std::exp2(clamp(mod,-1.f,1.f)*2.f);
+     if(!fixedPitch){
+      base=noteBaseHz*(pitchMod==0.f?commonPitch[(size_t)gen]:
+       std::exp2((us.baseSemis+pitchMod+(float)seq.pitch)/12.f));
+      if(p.fmMode==1)base*=std::exp2(clamp(mod,-1.f,1.f)*2.f);
+     }
      const float phaseMod=p.fmMode==0?mod*.5f:0.f;
      const float amp=us.amp;
      const HdTable* const hd=p.wave[gen]==waveCount?hdTables[(size_t)gen]:nullptr;
      const HdTable::PreparedFrame prepared=hd?(frameMod==0.f?
        sharedFrames[(size_t)gen]:hd->prepareFrame(framePosition)):HdTable::PreparedFrame{};
      for(int u=0;u<uni;u++){
-      const float freq=clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);
+      const auto& plan=pitchPlans[voiceIndex][(size_t)gen][(size_t)u];
+      const float freq=fixedPitch?plan.frequency:
+       clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);
       float &ph=v.phase[gen][u];
       const float shifted=ph+phaseMod+us.phase+
                           us.random*v.phaseJitter[(size_t)gen][(size_t)u];
       const float warped=oscillatorWarpPhase(shifted,p.oscWarp[gen],p.oscWarpMode[gen]);
       float x=(p.wave[gen]==waveCount ?
-       (hd?hd->samplePrepared(warped,prepared,freq,sr):customBandlimited.sample(gen,warped,framePosition,freq,sr)) :
+       (hd?(fixedPitch?hd->samplePreparedSpectral(warped,prepared,plan.spectral):
+                         hd->samplePrepared(warped,prepared,freq,sr)):
+            customBandlimited.sample(gen,warped,framePosition,freq,sr)) :
        bank.sample(p.wave[gen],warped,framePosition,freq,sr));
       const float blendGain=us.blendGain[(size_t)u];
       x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen]);
       v.modSignal[(size_t)gen]+=x*level/(float)uni;
       if(gen==0&&p.ringAmount>0.f){const float carrier=clamp(prior[1]+prior[2],-1.f,1.f);x*=mix(1.f,p.ringMode==0?carrier:.5f*(carrier+1.f),p.ringAmount);}
       x*=amp*blendGain;
-      ph+=freq/sr;if(ph>=1.f)ph-=std::floor(ph);
+      ph+=fixedPitch?plan.phaseIncrement:freq/sr;
+      if(ph>=1.f)ph-=std::floor(ph);
       float pan=panMod==0.f?us.pan[(size_t)u]:
        clamp(us.relative[(size_t)u]*p.spread+panMod+p.oscPan[gen],-1.f,1.f);
       vl+=x*(1-pan)*.5f;vr+=x*(1+pan)*.5f;
