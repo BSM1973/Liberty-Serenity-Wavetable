@@ -428,21 +428,26 @@ public:
     }
     float vCutoff=25.f*std::pow(800.f,clamp(p.cutoff+filterMod+seq.modulation*.22f+p.lfoDepth*lfo*.18f,0,1));
     float vl=0,vr=0;
+    const float noteBaseHz=noteHz(v.note);
     const auto prior=v.modSignal;v.modSignal.fill(0.f);
     for(int gen=0;gen<generators;gen++){
      float level=clamp(p.oscLevel[gen],0,1);
      if(level<.00001f)continue;
      int uni=std::max(1,std::min(maxUnison,p.unison[gen]));
-     float base=noteHz(v.note)*std::pow(2.f,(p.oscPitch[gen]
+     float base=noteBaseHz*std::exp2((p.oscPitch[gen]
       +p.oscOctave[gen]*12.f+p.oscSemi[gen]+p.oscFine[gen]*.01f
       +pitchMod+(float)seq.pitch)/12.f);
      const float mod=gen==0?prior[1]*p.fmBA+prior[2]*p.fmCA:gen==1?prior[2]*p.fmCB:0.f;
-     float amp=level/(std::sqrt((float)uni));
+     // FM modulation and unison detuning are identical for each oscillator
+     // unit except for detune index: compute exp2 outside the hot inner loop.
+     if(p.fmMode==1)base*=std::exp2(clamp(mod,-1.f,1.f)*2.f);
+     const float startDetune=uni>1?p.detune*.19f/12.f:0.f;
+     float unisonPitch=uni>1?std::exp2(-startDetune):1.f;
+     const float unisonStep=uni>1?std::exp2(2.f*startDetune/(uni-1)):1.f;
+     float amp=level/std::sqrt((float)uni);
      for(int u=0;u<uni;u++){
-      float det=(uni==1)?0:((2.f*u)/(uni-1)-1.f)*p.detune*.19f;
-      float freq=base*std::pow(2.f,det/12.f);
-      if(p.fmMode==1)freq*=std::pow(2.f,clamp(mod,-1.f,1.f)*2.f);
-      freq=clamp(freq,1.f,sr*.45f);
+      const float freq=clamp(base*unisonPitch,1.f,sr*.45f);
+      unisonPitch*=unisonStep;
       float &ph=v.phase[gen][u];
       const float shifted=ph+(p.fmMode==0?mod*.5f:0.f)+clamp(p.oscPhase[gen],0.f,1.f)+
                           clamp(p.oscRandPhase[gen],0.f,1.f)*v.phaseJitter[(size_t)gen][(size_t)u];

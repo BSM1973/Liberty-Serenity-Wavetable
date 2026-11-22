@@ -24,9 +24,15 @@ inline void hdFft(HdBin* data,int n,bool inverse) noexcept {
  }
  if(inverse)for(int i=0;i<n;i++)data[i]/=(float)n;
 }
-inline int hdMipLength(int mip) noexcept {return std::max(64,hdSamples>>mip);}
-inline int hdMipOffset(int mip) noexcept {int offset=0;for(int i=0;i<mip;i++)offset+=hdMipLength(i);return offset;}
-inline int hdMipStride() noexcept {return hdMipOffset(hdLevels);}
+// Constant-time offset lookup in the critical oscillator sample path.
+inline constexpr std::array<int,hdLevels+1> hdMipOffsets={
+ 0,2048,3072,3584,3840,3968,4032,4096,4160,4224,4288,4352
+};
+inline constexpr int hdMipLength(int mip) noexcept {return std::max(64,hdSamples>>mip);}
+inline constexpr int hdMipOffset(int mip) noexcept {return hdMipOffsets[(size_t)mip];}
+inline constexpr int hdMipStride() noexcept {return hdMipOffsets[(size_t)hdLevels];}
+static_assert(hdMipStride()==4352,"HD spectral stride must remain stable");
+
 inline std::vector<float> hdConvert(const float* source,int count,int cycle){
  if(!source||count<2||cycle<2||cycle>count||cycle>4096||count%cycle||count/cycle>hdMaxFrames)return {};
  for(int i=0;i<count;i++)if(!std::isfinite(source[i]))return {};
@@ -97,15 +103,38 @@ public:
  }
  float sample(float phase,float position,float hz,float sr)const noexcept {
   if(frames<1||!std::isfinite(phase)||!std::isfinite(position)||!std::isfinite(hz)||!std::isfinite(sr)||hz<=0||sr<8000||hz>=sr*.48f)return 0;
-  int mip=0;while(mip<hdLevels-1&&hz>sr*.48f/(float)((hdSamples/2)>>mip))++mip;
-  float f=std::clamp(position,0.f,1.f)*(frames-1);int a=(int)f,b=std::min(a+1,frames-1);
-  auto sampleAt=[&](int m){float x=at(a,m,phase),y=at(b,m,phase);return x+(y-x)*(f-a);};
-  float x=sampleAt(mip);
+  const float frequencyLimit=sr*.48f;
+  int mip=0;
+  while(mip<hdLevels-1&&hz>frequencyLimit/(float)((hdSamples/2)>>mip))++mip;
+  const float framePos=std::clamp(position,0.f,1.f)*(frames-1);
+  const int a=(int)framePos,b=std::min(a+1,frames-1);
+  const float frameBlend=framePos-a;
+  // Normalize phase and locate the two source frames exactly once per sample.
+  const float cyclePhase=phase-std::floor(phase);
+  const float* const frameA=mips.data()+(size_t)a*hdMipStride();
+  const float* const frameB=mips.data()+(size_t)b*hdMipStride();
+  auto atLevel=[&](int m)noexcept{
+   const int len=hdMipLength(m);
+   const float idx=cyclePhase*len;
+   const int i=(int)idx,j=(i+1)&(len-1);
+   const float blend=idx-i;
+   const int offset=hdMipOffset(m);
+   const float* const srcA=frameA+offset;
+   const float x=srcA[i]+(srcA[j]-srcA[i])*blend;
+   if(frameBlend<=0.f)return x;
+   const float* const srcB=frameB+offset;
+   const float y=srcB[i]+(srcB[j]-srcB[i])*blend;
+   return x+(y-x)*frameBlend;
+  };
+  const float x=atLevel(mip);
   if(mip==hdLevels-1)return x;
-  const float edge=sr*.48f/(float)((hdSamples/2)>>mip);
-  float t=std::clamp((hz-.8f*edge)/(.2f*edge),0.f,1.f);t=t*t*(3-2*t);
-  return t>0?x+(sampleAt(mip+1)-x)*t:x;
+  const float edge=frequencyLimit/(float)((hdSamples/2)>>mip);
+  const float t0=std::clamp((hz-.8f*edge)/(.2f*edge),0.f,1.f);
+  if(t0<=0.f)return x;
+  const float t=t0*t0*(3.f-2.f*t0);
+  return x+(atLevel(mip+1)-x)*t;
  }
+
 };
 // Single audio consumer; publishers serialized by writerMutex on non-audio
 // threads. Producer owns back, consumer owns front, exchange owns middle.

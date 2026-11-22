@@ -20,6 +20,7 @@ int main(){
  if(!hdConvert(source.data(),(int)source.size(),1024).empty())return 6;
  auto invalid=source;invalid[5]=std::numeric_limits<float>::quiet_NaN();if(!hdConvert(invalid.data(),(int)invalid.size(),hdSamples).empty())return 7;
  // A high harmonic is removed when its frequency would cross Nyquist.
+ if(hdMipStride()!=4352||hdMipOffset(10)!=4288||hdMipLength(10)!=64)return 13;
  std::vector<float> high(hdSamples);
  for(int i=0;i<hdSamples;i++)high[i]=.8f*std::sin(2*hdPi*300*i/hdSamples);
  HdTable harmonics(high);
