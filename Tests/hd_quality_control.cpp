@@ -125,7 +125,8 @@ int main(){
   std::vector<float> l((size_t)block),r((size_t)block);
   for(int i=0;i<8;i++){std::fill(l.begin(),l.end(),0);std::fill(r.begin(),r.end(),0);engine->render(l.data(),r.data(),block);}
   const int blocks=std::max(32,(int)std::ceil(seconds*rate/block));const double budget=1000.*block/rate;
-  std::vector<double> times;times.reserve((size_t)blocks);double total=0,energy=0,peak=0;size_t overruns=0;allocations=0;
+  std::vector<double> times;times.reserve((size_t)blocks);double total=0,energy=0,peak=0;size_t overruns=0;
+  allocations=0; // thread-local operator-new counter; do not shadow it
   for(int b=0;b<blocks;b++){
    std::fill(l.begin(),l.end(),0);std::fill(r.begin(),r.end(),0);
    p.position=(float)(.5+.49*std::sin(b*.031));
@@ -136,12 +137,13 @@ int main(){
    if(engine->numVoices()!=voices)return false;
    for(int i=0;i<block;i++){if(!std::isfinite(l[i])||!std::isfinite(r[i]))return false;energy+=(double)l[i]*l[i]+(double)r[i]*r[i];peak=std::max(peak,(double)std::max(std::abs(l[i]),std::abs(r[i])));}
   }
+  const size_t measuredAllocations=allocations;
   std::sort(times.begin(),times.end());double avg=total/blocks,p99=quantile(times,.99);auto mem=memory();
-  csv<<(hd?"HD":"legacy")<<','<<rate<<','<<block<<','<<voices<<','<<unison<<','<<(double)blocks*block/rate<<','<<avg<<','<<quantile(times,.5)<<','<<quantile(times,.95)<<','<<p99<<','<<times.back()<<','<<budget<<','<<100*avg/budget<<','<<100*p99/budget<<','<<overruns<<','<<blocks<<','<<allocations<<','<<std::sqrt(energy/(2.*blocks*block))<<','<<peak<<','<<mem.rss<<','<<mem.peak<<','<<filterConfig<<'\n';csv.flush();
+  csv<<(hd?"HD":"legacy")<<','<<rate<<','<<block<<','<<voices<<','<<unison<<','<<(double)blocks*block/rate<<','<<avg<<','<<quantile(times,.5)<<','<<quantile(times,.95)<<','<<p99<<','<<times.back()<<','<<budget<<','<<100*avg/budget<<','<<100*p99/budget<<','<<overruns<<','<<blocks<<','<<measuredAllocations<<','<<std::sqrt(energy/(2.*blocks*block))<<','<<peak<<','<<mem.rss<<','<<mem.peak<<','<<filterConfig<<'\n';csv.flush();
   if(hd&&overruns)realtime=false;
   ++cases;
   engine->allNotesOff();for(int i=0;i<64&&engine->numVoices()>0;i++){std::fill(l.begin(),l.end(),0);std::fill(r.begin(),r.end(),0);engine->render(l.data(),r.data(),block);}
-  return allocations==0&&energy>1e-5&&peak<=1.001&&engine->numVoices()==0;
+  return measuredAllocations==0&&energy>1e-5&&peak<=1.001&&engine->numVoices()==0;
  };
  for(int rate:{44100,48000,96000})for(int block:{64,256,512}){
   for(bool hd:{false,true})if(!run(hd,rate,block,32,1,.4))return fail(report,"32-note render or allocation check");

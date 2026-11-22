@@ -18,4 +18,6 @@ Objectif : réduire le coût CPU des 32 notes / 4 oscillateurs / unisson ×4 et 
 - Comparez les colonnes mean_budget_pct et p99_budget_pct de v1.2.4 contre le build n°132 de v1.2.3 **sur la même plateforme**. L'ordonnancement des runners GitHub peut varier et brouiller les comparaisons.
 - Les tests statiques et CI ne certifient ni l'absence de craquements sur machine cible ni la qualité subjective des presets : écoute A/B et sessions longues en DAW restent nécessaires.
 
+Le banc de test comptabilise désormais effectivement les allocations C++ ordinaires observées pendant les opérations Engine::setParams / setHdTable / render. Le compteur thread-local avait été masqué par une variable locale dans la première révision du protocole ; la correction du contrôle précède la validation de ce lot.
+
 Le code est gelé pour ce lot tant que la parité numérique, les CTest et les deux builds ne sont pas verts.
