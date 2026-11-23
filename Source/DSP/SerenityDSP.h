@@ -492,6 +492,28 @@ public:
   // sample-dynamic; constant key/velocity/wheel routes can be prepared.
   const bool varyingPitch=hasSampleVaryingPitchRoute(routes);
   const auto& pattern=sequence.getPattern();
+  const bool sequencerChangesPitch=sequencerMayTranspose(pattern);
+  // Preserve insertion order of the 64 modulation slots, but do not visit
+  // unused slots 32 times per sample. Modulation math and order are unchanged.
+  std::array<const ModRoute*,64> activeRoutes{};
+  size_t activeRouteCount=0;
+  for(const auto& route:routes)
+   if(route.source>=0&&route.destination>=0&&route.amount!=0.f)
+    activeRoutes[activeRouteCount++]=&route;
+  // A pitch LFO without note-specific fade has the same signal for all notes.
+  // It is safe to share the exponent across 32 voices; LFOs with fade or
+  // envelope/key/velocity pitch routes still take the original per-voice path.
+  bool sharedLfoPitch=false,sharedPitchEligible=true;
+  for(size_t ri=0;ri<activeRouteCount;ri++){
+   const auto& route=*activeRoutes[ri];
+   if(route.destination!=0)continue;
+   if(route.source>=6&&route.source<14){
+    const size_t index=(size_t)(route.source-6);
+    if(p.lfos[index].fade>0.f)sharedPitchEligible=false;
+    else sharedLfoPitch=true;
+   }else if(route.source!=16)sharedPitchEligible=false;
+  }
+  sharedLfoPitch &= sharedPitchEligible;
   const int currentStep=sequence.currentStep();
   const int cachedSequencePitch=currentStep>=0 ?
     std::clamp(pattern.steps[(size_t)currentStep].pitch,-24,24):0;
@@ -502,6 +524,12 @@ public:
      !oscillatorHasFrequencyFm(p,gen) && p.oscLevel[gen]>=.00001f;
    anyCachedGenerator|=canCachePitch[(size_t)gen];
   }
+  // Limit non-reusable cache rebuilds after sequencer pitch changes to a
+  // fixed number of voice/oscillator groups per callback. The remainder use
+  // the mathematically identical dynamic oscillator until their plans are
+  // available, avoiding an all-voices cache-rebuild spike.
+  int remainingPlanBuilds=sequencerChangesPitch?16:maxVoices*generators;
+  std::array<std::array<bool,generators>,maxVoices> readyPlans{};
   if(anyCachedGenerator){
    for(size_t vi=0;vi<voices.size();++vi){
     const auto& voice=voices[vi];if(!voice.active)continue;
@@ -516,7 +544,9 @@ public:
        key.mod==voiceMod && key.sampleRate==sr &&
        key.sequencePitch==cachedSequencePitch &&
        key.unison==us.count && key.hasHD==(hd!=nullptr);
-     if(same)continue;
+     if(same){readyPlans[vi][(size_t)gen]=true;continue;}
+     if(remainingPlanBuilds==0)continue;
+     --remainingPlanBuilds;
      const float staticPitch=std::exp2(
        (us.baseSemis+voiceMod+(float)cachedSequencePitch)/12.f);
      const float base=voice.baseFrequency*staticPitch;
@@ -531,6 +561,7 @@ public:
      key.detune=p.detune;key.mod=voiceMod;
      key.sampleRate=sr;key.sequencePitch=cachedSequencePitch;
      key.unison=us.count;key.hasHD=hd!=nullptr;key.valid=true;
+     readyPlans[vi][(size_t)gen]=true;
     }
    }
   }
@@ -557,7 +588,7 @@ public:
   const float filter2SharedG=sharedFilter2?std::tan(pi*clamp(filter2Base,10.f,sr*.45f)/sr):0.f;
   // A sequencer pitch changes at step boundaries, not every audio sample.
   // Reuse exactly the same common oscillator exponents until it changes.
-  std::array<float,generators> commonPitch{};
+  std::array<float,generators> commonPitch{},sharedLfoFactors{};
   int lastCommonPitch=0;
   bool commonPitchReady=false;
   for(int n=0;n<count;n++){
@@ -586,6 +617,25 @@ public:
     lastCommonPitch=seq.pitch;
     commonPitchReady=true;
    }
+   float sharedPitchMod=0.f;
+   if(sharedLfoPitch){
+    for(size_t ri=0;ri<activeRouteCount;ri++){
+     const auto& route=*activeRoutes[ri];
+     if(route.destination!=0)continue;
+     float src=0.f;
+     if(route.source>=6&&route.source<14){
+      const size_t k=(size_t)(route.source-6);
+      src=lfos[k]*(p.lfos[k].fade>0.f?0.f:1.f);
+     }else if(route.source==16)src=modWheel;
+     const float amount=src*route.amount;
+     sharedPitchMod+=amount*12.f;
+    }
+    if(sharedPitchMod!=0.f)
+     for(int gen=0;gen<generators;gen++)
+      if(p.oscLevel[gen]>=.00001f)
+       sharedLfoFactors[(size_t)gen]=std::exp2(
+        (unisonStates[(size_t)gen].baseSemis+sharedPitchMod+(float)seq.pitch)/12.f);
+   }
    int countActive=0;
    for(size_t voiceIndex=0;voiceIndex<voices.size();++voiceIndex){
     auto &v=voices[voiceIndex];
@@ -603,8 +653,8 @@ public:
     envs[0]=env;
     for(size_t k=1;k<envs.size();k++){const auto& cfg=p.modEnv[k-1];envs[k]=v.envelopes[k].next(cfg,sr)*mix(1.f,v.velocity,cfg.velocity);}
     float pitchMod=0,frameMod=0,filterMod=0,volumeMod=0,panMod=0;
-    for(const auto &route:routes){
-     if(route.source<0||route.destination<0||route.amount==0)continue;
+    for(size_t ri=0;ri<activeRouteCount;ri++){
+     const auto &route=*activeRoutes[ri];
      float src=0;
      if(route.source<6)src=envs[(size_t)route.source];
      else if(route.source<14){size_t k=(size_t)(route.source-6);src=lfos[k]*(p.lfos[k].fade>0.f?clamp(v.lfoAge/p.lfos[k].fade,0.f,1.f):1.f);}
@@ -633,13 +683,16 @@ public:
      const auto& us=unisonStates[(size_t)gen];
      const int uni=us.count;
      const bool fixedPitch=canCachePitch[(size_t)gen] &&
+       readyPlans[voiceIndex][(size_t)gen] &&
        pitchMod==pitchKeys[voiceIndex][(size_t)gen].mod &&
        seq.pitch==cachedSequencePitch;
      float base=0.f;
      const float mod=gen==0?prior[1]*p.fmBA+prior[2]*p.fmCA:gen==1?prior[2]*p.fmCB:0.f;
      if(!fixedPitch){
       base=noteBaseHz*(pitchMod==0.f?commonPitch[(size_t)gen]:
-       std::exp2((us.baseSemis+pitchMod+(float)seq.pitch)/12.f));
+       (sharedLfoPitch&&pitchMod==sharedPitchMod?
+         sharedLfoFactors[(size_t)gen]:
+         std::exp2((us.baseSemis+pitchMod+(float)seq.pitch)/12.f)));
       if(p.fmMode==1)base*=std::exp2(clamp(mod,-1.f,1.f)*2.f);
      }
      const float phaseMod=p.fmMode==0?mod*.5f:0.f;

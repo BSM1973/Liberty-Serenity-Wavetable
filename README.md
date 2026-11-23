@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.8 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.9 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -62,6 +62,16 @@ Le moteur distingue les routes de hauteur variables à chaque échantillon (enve
 Les préparations de fréquence sont réutilisées entre les blocs audio tant que la hauteur, le désaccordage, la note, l'unisson, la fréquence d'échantillonnage et l'état HD restent identiques. Pour le séquenceur, le plan d'une voix suit la hauteur du pas au début du bloc ; si une transition survient au milieu du bloc, le moteur emploie le traitement dynamique exact jusqu'au bloc suivant. Les modulations PITCH par enveloppe/LFO et la FM fréquentielle continuent d'utiliser le chemin dynamique propre à chaque oscillateur, sans préparer de caches inutiles.
 
 Les facteurs de hauteur identiques sont également calculés une seule fois par changement de hauteur du séquenceur et non à chaque échantillon. Le banc A/B compare les onze scénarios v1.2.8 et v1.2.7 avec l'intégralité des échantillons stéréo, notamment la FM, le pitch/morph, les changements de pas, les LFO et le suivi de clavier.
+
+## v1.2.9 — réduction des pics CPU et meilleure modulation LFO
+
+Le moteur évite désormais le parcours des 64 routes de modulation inactives pour chacune des 32 notes à chaque échantillon : une liste compacte, respectant strictement l'ordre des routes actives, est préparée une seule fois par bloc. Si une modulation LFO de hauteur ne dépend pas de l'âge des notes (pas de fade), son coefficient de hauteur commun est calculé une seule fois par oscillateur et par échantillon, sans modifier les calculs de modulation individuels. Si un LFO possède un fade ou si le pitch dépend d'une enveloppe, le calcul dynamique original reste actif.
+
+Les deux durées du séquenceur (pas pairs/impairs, avec swing) sont recalculées seulement lors d'un changement de pattern ou de fréquence d'échantillonnage ; leurs valeurs en double précision sont identiques à la formule initiale.
+
+À forte polyphonie, lorsqu'un pas transposé rend les caches spectraux périmés, les reconstructions sont réparties sur plusieurs blocs, avec un plafond de 16 groupes note/générateur préparés par bloc. Les autres oscillateurs utilisent provisoirement le lecteur dynamique complet afin d'éviter une pointe de calcul liée à la reconstruction simultanée de 2 048 niveaux. Aucun paramètre, algorithme d'interpolation ou format de projet n'est modifié.
+
+La comparaison native v1.2.8 / v1.2.9 comprend 15 scénarios à 32 notes, notamment les changements rapides de séquence, unisson ×16 avec LFO de hauteur (fade et multi-LFO), 48 kHz buffers 64/128 et 96 kHz. Elle vérifie la sortie audio sur l'intégralité des blocs et publie les mesures de CPU moyen et du 99e percentile.
 
 ## Validation et distribution
 

@@ -35,6 +35,9 @@ class StepClock {
  double sampleRate = 48000.;
  double sampleInStep = 0.;
  int stepIndex = 0;
+ // The step duration changes only when the pattern or sample rate changes.
+ // Keep the original IEEE double calculation, precomputed for even/odd swing.
+ std::array<double,2> cachedDurations{{1.,1.}};
 
  double durationFor(int step) const noexcept {
    const double bpm = std::max(20.,std::min(300.,(double)pattern.tempo));
@@ -44,9 +47,14 @@ class StepClock {
    const double swing = std::max(0.,std::min(.5,(double)pattern.swing));
    return std::max(1.,nominal * ((step % 2 == 0) ? (1. + swing) : (1. - swing)));
  }
+ void refreshDurations() noexcept {
+  cachedDurations[0]=durationFor(0);
+  cachedDurations[1]=durationFor(1);
+ }
 public:
  void prepare(double sr) noexcept {
    sampleRate = std::max(8000.,sr);
+   refreshDurations();
    reset();
  }
  void reset() noexcept { sampleInStep = 0.;stepIndex=0; }
@@ -58,13 +66,14 @@ public:
    pattern.tempo=std::max(20.f,std::min(300.f,pattern.tempo));
    pattern.mode=std::max(0,std::min(2,pattern.mode));
    stepIndex %= pattern.length;
+   refreshDurations();
  }
  const SequencePattern& getPattern() const noexcept {return pattern;}
  int currentStep() const noexcept {return pattern.mode==0 ? -1 : stepIndex;}
  SequenceFrame tick() noexcept {
    if (pattern.mode == 0) return {};
    const auto& step=pattern.steps[(size_t)stepIndex];
-   const double duration=durationFor(stepIndex);
+   const double duration=cachedDurations[(size_t)(stepIndex&1)];
    SequenceFrame frame;
    frame.pitch=std::max(-24,std::min(24,step.pitch));
    frame.velocity=std::max(0.f,std::min(1.f,step.velocity));

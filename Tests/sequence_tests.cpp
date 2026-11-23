@@ -51,5 +51,66 @@ int main() {
  p.mode=0;clock.setPattern(p);
  frame=clock.tick();
  assert(frame.index==-1&&frame.gate==1.f&&frame.velocity==1.f); // bypass
+ // Independent v1.2.8 step clock: durationFor() was called on every
+ // sample, while v1.2.9 caches the identical double result per parity.
+ struct ReferenceClock {
+  SequencePattern pattern{};
+  double sr=48000.,sample=0.;
+  int index=0;
+  void prepare(double next){sr=std::max(8000.,next);sample=0.;index=0;}
+  void set(const SequencePattern& next){
+   pattern=next;
+   pattern.length=std::clamp(pattern.length,1,64);
+   pattern.gate=std::clamp(pattern.gate,0.f,1.f);
+   pattern.swing=std::clamp(pattern.swing,0.f,.5f);
+   pattern.tempo=std::clamp(pattern.tempo,20.f,300.f);
+   pattern.mode=std::clamp(pattern.mode,0,2);
+   index%=pattern.length;
+  }
+  int current()const{return pattern.mode==0?-1:index;}
+  SequenceFrame tick(){
+   if(pattern.mode==0)return {};
+   const auto& step=pattern.steps[(size_t)index];
+   const double bpm=std::max(20.,std::min(300.,(double)pattern.tempo));
+   const int division=(pattern.rate==4||pattern.rate==8||
+    pattern.rate==16||pattern.rate==32)?pattern.rate:16;
+   const double nominal=sr*(240./bpm)/division;
+   const double swing=std::max(0.,std::min(.5,(double)pattern.swing));
+   const double duration=std::max(1.,nominal*((index%2==0)?(1.+swing):(1.-swing)));
+   SequenceFrame f;
+   f.pitch=std::clamp(step.pitch,-24,24);
+   f.velocity=std::clamp(step.velocity,0.f,1.f);
+   f.modulation=pattern.mode==2?std::clamp(step.modulation,-1.f,1.f):0.f;
+   f.gate=(sample<duration*(double)pattern.gate&&f.velocity>0.f)?1.f:0.f;
+   f.index=index;
+   sample+=1.;
+   if(sample>=duration){sample-=duration;index=(index+1)%pattern.length;}
+   return f;
+  }
+ };
+ for(double rate:{44100.,48000.,96000.}){
+  StepClock optimized;
+  ReferenceClock baseline;
+  optimized.prepare(rate);baseline.prepare(rate);
+  for(int config=0;config<6;config++){
+   SequencePattern pat=defaultSequence();
+   pat.length=5+config*7;pat.mode=1+config%2;
+   pat.tempo=45.f+config*48.f;
+   pat.rate=(config%4==0?4:config%4==1?8:config%4==2?16:32);
+   pat.swing=config*.075f;pat.gate=.24f+config*.12f;
+   for(int i=0;i<sequenceMaxSteps;i++){
+    pat.steps[(size_t)i].pitch=(i%13)-6;
+    pat.steps[(size_t)i].velocity=(i%5==0)?0.f:(.1f+i%8*.1f);
+    pat.steps[(size_t)i].modulation=(i%9-4)*.21f;
+   }
+   optimized.setPattern(pat);baseline.set(pat);
+   for(int n=0;n<9000;n++){
+    const auto a=optimized.tick(),b=baseline.tick();
+    assert(a.index==b.index&&a.pitch==b.pitch&&a.gate==b.gate);
+    assert(a.velocity==b.velocity&&a.modulation==b.modulation);
+    assert(optimized.currentStep()==baseline.current());
+   }
+  }
+ }
  std::cout<<"PASS: 64 steps, note pitch, velocity/rest, mod, gate, 4 divisions, swing, and bypass\n";
 }

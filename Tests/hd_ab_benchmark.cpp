@@ -1,4 +1,4 @@
-// Same source is compiled against pinned v1.2.7 and candidate DSP headers.
+// Same source is compiled against pinned v1.2.8 and candidate DSP headers.
 // Runs on the same GitHub Actions runner in alternating A/B order.
 #include "SerenityDSP.h"
 #include <algorithm>
@@ -26,7 +26,11 @@ constexpr Scenario scenarios[]={
  {"u16_48k_b128_pitch_morph",48000,128,16,false,45,2},
  {"u16_48k_b128_seq_pitch",48000,128,16,false,45,3},
  {"u16_48k_b128_lfo_pitch",48000,128,16,false,42,4},
- {"u16_48k_b128_key_pitch",48000,128,16,false,42,5}
+ {"u16_48k_b128_key_pitch",48000,128,16,false,42,5},
+ {"u16_48k_b128_lfo_pitch_fade",48000,128,16,false,42,6},
+ {"u16_48k_b128_seq_fast",48000,128,16,false,45,7},
+ {"u16_48k_b64_seq_pitch",48000,64,16,false,70,8},
+ {"u16_48k_b128_lfo_multi",48000,128,16,false,45,9}
 };
 static double quantile(std::vector<double> v,double p){
  std::sort(v.begin(),v.end());
@@ -60,9 +64,12 @@ int main(int argc,char** argv){
   if(sc.variant==2){engine->route(0)={14,0,.36f};engine->route(1)={0,1,.22f};}
   if(sc.variant==4){engine->route(0)={6,0,.12f};engine->route(1)={0,1,.18f};}
   if(sc.variant==5){engine->route(0)={15,0,.24f};engine->route(1)={14,0,.14f};}
-  if(sc.variant==3){
+  if(sc.variant==6){p.lfos[0].fade=.2f;engine->route(0)={6,0,.12f};engine->route(1)={0,1,.18f};}
+  if(sc.variant==9){engine->route(0)={6,0,.12f};engine->route(1)={7,0,-.08f};engine->route(2)={0,1,.18f};}
+  if(sc.variant==3||sc.variant==7||sc.variant==8){
    auto pattern=defaultSequence();pattern.mode=2;pattern.rate=32;
-   pattern.tempo=200.f;pattern.length=8;
+   pattern.tempo=(sc.variant==7||sc.variant==8)?300.f:200.f;
+   pattern.length=8;
    engine->setSequence(pattern);
   }
   for(int n=0;n<32;n++)engine->noteOn(36+n,.76f);
