@@ -69,7 +69,7 @@ Le moteur évite désormais le parcours des 64 routes de modulation inactives po
 
 Les deux durées du séquenceur (pas pairs/impairs, avec swing) sont recalculées seulement lors d'un changement de pattern ou de fréquence d'échantillonnage ; leurs valeurs en double précision sont identiques à la formule initiale.
 
-À forte polyphonie, lorsqu'un pas transposé rend les caches spectraux périmés, les reconstructions sont réparties sur plusieurs blocs, avec un plafond de 16 groupes note/générateur préparés par bloc. Les autres oscillateurs utilisent provisoirement le lecteur dynamique complet afin d'éviter une pointe de calcul liée à la reconstruction simultanée de 2 048 niveaux. Aucun paramètre, algorithme d'interpolation ou format de projet n'est modifié.
+L'essai initial limitant les reconstructions à 16 groupes note/générateur par bloc a été retiré après mesure : à 32 notes et unisson ×16, la lecture dynamique forcée sur les autres voix augmentait le CPU moyen et les pics du séquenceur. La version finale reconstitue donc tous les plans invalidés au début du bloc et conserve ensuite le chemin spectral accéléré pour chaque voix. La liste compacte de routes, le calcul LFO partagé et les durées précalculées sont maintenus. Aucun paramètre, algorithme d'interpolation ou format de projet n'est modifié.
 
 La comparaison native v1.2.8 / v1.2.9 comprend 15 scénarios à 32 notes, notamment les changements rapides de séquence, unisson ×16 avec LFO de hauteur (fade et multi-LFO), 48 kHz buffers 64/128 et 96 kHz. Elle vérifie la sortie audio sur l'intégralité des blocs et publie les mesures de CPU moyen et du 99e percentile.
 

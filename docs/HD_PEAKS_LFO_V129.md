@@ -9,7 +9,7 @@
 1. Scanner les 64 routes de modulation une fois par bloc, construire un tableau préalloué de pointeurs vers les routes valides, et conserver leur ordre source. Au lieu de répéter 64 tests conditionnels par note et par échantillon, itérer uniquement sur les routes actives.
 2. Pour une modulation de pitch issue uniquement des LFO sans fade et éventuellement de la molette, partager les calculs exponentiels de hauteur entre les notes, mais pas l'état ni le résultat d'une modulation par voix. Avec fades, enveloppes, suivi de clavier ou vélocité, préserver l'ancienne voie individuelle.
 3. Pré-calculer les durées double précision du séquenceur pour les pas pairs/impairs lors de `prepare` et `setPattern` ; la formule et la gestion du swing restent inchangées.
-4. Amortir les recalculs de tables spectrales lors des changements de pas : au maximum seize groupes note/oscillateur préparés par bloc quand le séquenceur peut transposer. Un plan non encore préparé utilise la lecture dynamique complète. Les plans déjà valides sont immédiatement réutilisés.
+4. **Correction après mesures du build n°140 :** le plafonnement à seize groupes note/oscillateur par bloc ralentissait le séquenceur sous unisson ×16 (macOS jusqu'à +39 % en temps moyen, Windows +6 à +7 %). Ce plafonnement est retiré : tous les plans invalidés sont construits dès le début du bloc, puis réutilisés dans le chemin rapide. L'optimisation ultérieure des pics doit se concentrer sur le coût propre des voix et non sur une limitation artificielle de la préparation.
 5. Garder toutes les phases, formes d'onde, niveaux d'unisson et routages de modulation à leur précision d'origine.
 
 ## Tests de non-régression
@@ -22,3 +22,7 @@
 - Aucun résultat sur runner hébergé ne prouve la tenue audio sur ordinateur personnel ; les essais sur DAW et interface audio restent une condition distincte.
 
 La validation est limitée aux builds et aux mesures réellement passées, sans déclaration automatique de temps réel atteint.
+
+## Révision de validation
+
+Le premier essai v1.2.9 (build n°140) a réussi les contrôles de fidélité mais régressait sur les séquences à ×16. Une correction ciblée retire le plafonnement des caches avant la publication finale. Les chiffres ci-dessus concernent le premier essai et ne doivent pas être utilisés pour annoncer les performances de la révision. L'ensemble des builds macOS/Windows et le benchmark A/B doivent être relancés et lus de nouveau.

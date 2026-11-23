@@ -492,7 +492,6 @@ public:
   // sample-dynamic; constant key/velocity/wheel routes can be prepared.
   const bool varyingPitch=hasSampleVaryingPitchRoute(routes);
   const auto& pattern=sequence.getPattern();
-  const bool sequencerChangesPitch=sequencerMayTranspose(pattern);
   // Preserve insertion order of the 64 modulation slots, but do not visit
   // unused slots 32 times per sample. Modulation math and order are unchanged.
   std::array<const ModRoute*,64> activeRoutes{};
@@ -524,11 +523,10 @@ public:
      !oscillatorHasFrequencyFm(p,gen) && p.oscLevel[gen]>=.00001f;
    anyCachedGenerator|=canCachePitch[(size_t)gen];
   }
-  // Limit non-reusable cache rebuilds after sequencer pitch changes to a
-  // fixed number of voice/oscillator groups per callback. The remainder use
-  // the mathematically identical dynamic oscillator until their plans are
-  // available, avoiding an all-voices cache-rebuild spike.
-  int remainingPlanBuilds=sequencerChangesPitch?16:maxVoices*generators;
+  // Profiling v1.2.9 build #140 showed that throttling plan rebuilds
+  // forces too many expensive dynamic table reads through the next blocks.
+  // Complete the ready plans at block start instead: dense unison ×16
+  // sequences benefit from the fast spectral path throughout the callback.
   std::array<std::array<bool,generators>,maxVoices> readyPlans{};
   if(anyCachedGenerator){
    for(size_t vi=0;vi<voices.size();++vi){
@@ -545,8 +543,6 @@ public:
        key.sequencePitch==cachedSequencePitch &&
        key.unison==us.count && key.hasHD==(hd!=nullptr);
      if(same){readyPlans[vi][(size_t)gen]=true;continue;}
-     if(remainingPlanBuilds==0)continue;
-     --remainingPlanBuilds;
      const float staticPitch=std::exp2(
        (us.baseSemis+voiceMod+(float)cachedSequencePitch)/12.f);
      const float base=voice.baseFrequency*staticPitch;
