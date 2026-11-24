@@ -1,4 +1,4 @@
-// Same source is compiled against pinned v1.2.8 and candidate DSP headers.
+// Same source is compiled against pinned v1.2.9 and candidate DSP headers.
 // Runs on the same GitHub Actions runner in alternating A/B order.
 #include "SerenityDSP.h"
 #include <algorithm>
@@ -30,7 +30,10 @@ constexpr Scenario scenarios[]={
  {"u16_48k_b128_lfo_pitch_fade",48000,128,16,false,42,6},
  {"u16_48k_b128_seq_fast",48000,128,16,false,45,7},
  {"u16_48k_b64_seq_pitch",48000,64,16,false,70,8},
- {"u16_48k_b128_lfo_multi",48000,128,16,false,45,9}
+ {"u16_48k_b128_lfo_multi",48000,128,16,false,45,9},
+ {"u16_48k_b128_warp_width",48000,128,16,false,45,10},
+ {"u16_48k_b128_lfo_warp",48000,128,16,false,45,11},
+ {"u16_96k_b128_lfo",96000,128,16,false,45,12}
 };
 static double quantile(std::vector<double> v,double p){
  std::sort(v.begin(),v.end());
@@ -66,6 +69,9 @@ int main(int argc,char** argv){
   if(sc.variant==5){engine->route(0)={15,0,.24f};engine->route(1)={14,0,.14f};}
   if(sc.variant==6){p.lfos[0].fade=.2f;engine->route(0)={6,0,.12f};engine->route(1)={0,1,.18f};}
   if(sc.variant==9){engine->route(0)={6,0,.12f};engine->route(1)={7,0,-.08f};engine->route(2)={0,1,.18f};}
+  if(sc.variant==11||sc.variant==12){engine->route(0)={6,0,.12f};engine->route(1)={0,1,.18f};}
+  if(sc.variant==10||sc.variant==11)
+   for(int g=0;g<4;g++){p.oscWarp[g]=.46f;p.oscWarpMode[g]=2;}
   if(sc.variant==3||sc.variant==7||sc.variant==8){
    auto pattern=defaultSequence();pattern.mode=2;pattern.rate=32;
    pattern.tempo=(sc.variant==7||sc.variant==8)?300.f:200.f;

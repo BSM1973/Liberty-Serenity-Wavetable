@@ -336,6 +336,9 @@ class Engine {
  struct VoiceOscPlan {
   float frequency=0.f,phaseIncrement=0.f;
   HdTable::PreparedSpectral spectral{};
+  // Dynamic pitch levels change slowly; cache just the last mip index,
+  // independent of the fixed-pitch plan and safe at sample-rate changes.
+  int dynamicMip=0;
  };
  std::array<std::array<std::array<VoiceOscPlan,maxUnison>,generators>,maxVoices> pitchPlans{};
  // Persistent plans survive morph-only changes across blocks. Parameters
@@ -697,18 +700,23 @@ public:
      const HdTable::PreparedFrame prepared=hd?(frameMod==0.f?
        sharedFrames[(size_t)gen]:hd->prepareFrame(framePosition)):HdTable::PreparedFrame{};
      for(int u=0;u<uni;u++){
-      const auto& plan=pitchPlans[voiceIndex][(size_t)gen][(size_t)u];
+      auto& plan=pitchPlans[voiceIndex][(size_t)gen][(size_t)u];
       const float freq=fixedPitch?plan.frequency:
        clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);
       float &ph=v.phase[gen][u];
       const float shifted=ph+phaseMod+us.phase+
                           us.random*v.phaseJitter[(size_t)gen][(size_t)u];
       const float warped=oscillatorWarpPhase(shifted,p.oscWarp[gen],p.oscWarpMode[gen]);
-      float x=(p.wave[gen]==waveCount ?
-       (hd?(fixedPitch?hd->samplePreparedSpectral(warped,prepared,plan.spectral):
-                         hd->samplePrepared(warped,prepared,freq,sr)):
-            customBandlimited.sample(gen,warped,framePosition,freq,sr)) :
-       bank.sample(p.wave[gen],warped,framePosition,freq,sr));
+      // Warp guarantees finite normalized phase: the HD reader can skip
+      // floor() while retaining the exact frame and mip interpolations.
+      float x=0.f;
+      if(p.wave[gen]==waveCount){
+       if(hd){
+        const auto spectral=fixedPitch?plan.spectral:
+         HdTable::prepareSpectralNear(freq,sr,plan.dynamicMip);
+        x=hd->samplePreparedSpectralWrapped(warped,prepared,spectral);
+       }else x=customBandlimited.sample(gen,warped,framePosition,freq,sr);
+      }else x=bank.sample(p.wave[gen],warped,framePosition,freq,sr);
       const float blendGain=us.blendGain[(size_t)u];
       x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen]);
       v.modSignal[(size_t)gen]+=x*level/(float)uni;

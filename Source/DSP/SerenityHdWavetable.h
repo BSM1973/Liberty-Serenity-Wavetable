@@ -137,10 +137,29 @@ public:
   const float t=t0*t0*(3.f-2.f*t0);
   return {mip,t,true};
  }
- float samplePreparedSpectral(float phase,const PreparedFrame& frame,
+ // Dynamic pitch often stays in the same mip between adjacent samples.
+ // Step from a saved mip instead of scanning all 11 levels from zero.
+ // Upward and downward comparisons match prepareSpectral() at boundaries.
+ static PreparedSpectral prepareSpectralNear(float hz,float sr,int& previousMip) noexcept {
+  if(!std::isfinite(hz)||!std::isfinite(sr)||hz<=0.f||
+     sr<8000.f||hz>=sr*.48f)return {};
+  const float limit=sr*.48f;
+  int mip=std::clamp(previousMip,0,hdLevels-1);
+  while(mip<hdLevels-1&&hz>limit/(float)((hdSamples/2)>>mip))++mip;
+  while(mip>0&&hz<=limit/(float)((hdSamples/2)>>(mip-1)))--mip;
+  previousMip=mip;
+  if(mip==hdLevels-1)return {mip,0.f,true};
+  const float edge=limit/(float)((hdSamples/2)>>mip);
+  const float t0=std::clamp((hz-.8f*edge)/(.2f*edge),0.f,1.f);
+  const float t=t0*t0*(3.f-2.f*t0);
+  return {mip,t,true};
+ }
+ float samplePreparedSpectralWrapped(float phase,const PreparedFrame& frame,
                              const PreparedSpectral& spectral)const noexcept {
-  if(!frame.frameA||!spectral.valid||!std::isfinite(phase))return 0.f;
-  const float cyclePhase=phase-std::floor(phase);
+  if(!frame.frameA||!spectral.valid)return 0.f;
+  // oscillatorWarpPhase normalizes to [0,1]; a value rounded to exactly
+  // 1.0 must still wrap to zero before deriving the sample index.
+  const float cyclePhase=phase>=1.f?phase-std::floor(phase):phase;
   auto atLevel=[&](int m)noexcept{
    const int len=hdMipLength(m);
    const float idx=cyclePhase*len;
@@ -157,6 +176,12 @@ public:
   const float x=atLevel(spectral.mip);
   if(spectral.mip==hdLevels-1||spectral.blend<=0.f)return x;
   return x+(atLevel(spectral.mip+1)-x)*spectral.blend;
+ }
+ // General-purpose API preserves arbitrary input-phase behavior.
+ float samplePreparedSpectral(float phase,const PreparedFrame& frame,
+                             const PreparedSpectral& spectral)const noexcept {
+  if(!frame.frameA||!spectral.valid||!std::isfinite(phase))return 0.f;
+  return samplePreparedSpectralWrapped(phase-std::floor(phase),frame,spectral);
  }
  float samplePrepared(float phase,const PreparedFrame& frame,float hz,float sr)const noexcept {
   if(!frame.frameA||!std::isfinite(phase)||!std::isfinite(hz)||

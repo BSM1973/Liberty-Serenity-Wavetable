@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.9 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.10 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -72,6 +72,14 @@ Les deux durées du séquenceur (pas pairs/impairs, avec swing) sont recalculée
 L'essai initial limitant les reconstructions à 16 groupes note/générateur par bloc a été retiré après mesure : à 32 notes et unisson ×16, la lecture dynamique forcée sur les autres voix augmentait le CPU moyen et les pics du séquenceur. La version finale reconstitue donc tous les plans invalidés au début du bloc et conserve ensuite le chemin spectral accéléré pour chaque voix. La liste compacte de routes, le calcul LFO partagé et les durées précalculées sont maintenus. Aucun paramètre, algorithme d'interpolation ou format de projet n'est modifié.
 
 La comparaison native v1.2.8 / v1.2.9 comprend 15 scénarios à 32 notes, notamment les changements rapides de séquence, unisson ×16 avec LFO de hauteur (fade et multi-LFO), 48 kHz buffers 64/128 et 96 kHz. Elle vérifie la sortie audio sur l'intégralité des blocs et publie les mesures de CPU moyen et du 99e percentile.
+
+## v1.2.10 — cœur de lecture HD et étude SIMD
+
+La version conserve les quatre banques HD complètes (256 formes de 2048 échantillons, 11 niveaux spectraux), les 32 notes et l'unisson maximal ×16. Le chemin de lecture des tables HD utilise directement la phase déjà normalisée par l'oscillateur, tout en préservant le bouclage exact lorsque la phase s'arrondit à 1. Pour les modulations dynamiques de hauteur, le lecteur conserve le dernier niveau spectral et ne remonte ou descend dans les niveaux que si la fréquence franchit une frontière de bande. Les interpolations et l'anti-aliasing restent les mêmes, sans diminution de résolution.
+
+50 000 comparaisons déterministes plus les frontières de bandes vérifient la parité exacte des niveaux et des échantillons. Le benchmark A/B exécute 18 configurations sur les mêmes runners que la version épinglée v1.2.9, y compris le morphing, la FM, les LFO de hauteur, la déformation de phase WIDTH et le séquenceur à unisson ×16. Le test échoue en cas de différence sonore supérieure aux tolérances définies.
+
+Un prototype de calcul vectoriel sur quatre phases est mesuré séparément en **ARM NEON** sur macOS et **SSE2** sur Windows x64. Il compare la sortie à l'interpolation scalaire avec une tolérance stricte, puis mesure le temps total. Comme chaque oscillateur lit à une phase différente, les accès aux tables restent des *gathers* scalaires sous NEON/SSE2. Le prototype ne devient pas automatiquement une optimisation de production : son ratio de vitesse et la parité doivent être démontrés dans les rapports `hd-simd-study.txt`.
 
 ## Validation et distribution
 

@@ -84,9 +84,9 @@ def main():
         writer=csv.DictWriter(f,fieldnames=list(summary[0].keys()))
         writer.writeheader();writer.writerows(summary)
     lines=[
-        "# Serenity HD v1.2.9 — paired A/B benchmark",
+        "# Serenity HD v1.2.10 — paired A/B benchmark",
         "",
-        f"Runner: {platform.system()} {platform.machine()}. Pinned baseline: v1.2.8 commit 5b27c97b48f005bfd7f6eae79347d30e4352f575.",
+        f"Runner: {platform.system()} {platform.machine()}. Pinned baseline: v1.2.9 commit 5970109079840506cfc308a3828cfd25e3c4f02a.",
         "A/B/A/B order: baseline, candidate, candidate, baseline, on the same runner, same source benchmark, identical high-density HD tables and MIDI notes.",
         "CPU numbers are medians of two trials for each version. Shared-runner scheduling and thermal variation remain sources of measurement noise.",
         "A negative change indicates less CPU time. Fidelity compares the complete sequence of rendered interleaved stereo blocks, sample for sample.",

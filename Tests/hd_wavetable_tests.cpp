@@ -74,6 +74,51 @@ int main(){
  if(bank->samplePreparedSpectral(.25f,bank->prepareFrame(.5f),
      HdTable::prepareSpectral(0.f,48000.f))!=0.f)return 17;
 
+ // Cached dynamic-mip lookup must match the exact original selection,
+ // including downward jumps, interpolation edges and changing sample rates.
+ for(int n=0;n<50000;n++){
+  const float sr=(n%3==0)?44100.f:(n%3==1)?48000.f:96000.f;
+  const float phase=(float)((n*137u)%10103u)/10103.f;
+  const float position=(float)((n*227u)%2557u)/2556.f;
+  float hz=1.f+(float)((n*379u)%44000u);
+  if(n%7==0){
+   const int mip=n%hdLevels;
+   const float edge=sr*.48f/(float)((hdSamples/2)>>mip);
+   hz=std::nextafter(edge,(n&1)?0.f:sr);
+  }
+  int lastMip=(n*11)%hdLevels;
+  const auto old=HdTable::prepareSpectral(hz,sr);
+  const auto neu=HdTable::prepareSpectralNear(hz,sr,lastMip);
+  if(old.valid!=neu.valid||old.mip!=neu.mip||old.blend!=neu.blend){
+   std::cerr<<"HD mip cache mismatch at "<<n<<" old/new "<<old.mip<<"/"<<neu.mip<<"\\n";
+   return 18;
+  }
+  const auto frame=bank->prepareFrame(position);
+  const float oldAudio=bank->samplePreparedSpectral(phase,frame,old);
+  const float newAudio=bank->samplePreparedSpectralWrapped(phase,frame,neu);
+  if(oldAudio!=newAudio){
+   std::cerr<<"HD wrapped interpolation mismatch "<<n<<" "<<oldAudio<<" "<<newAudio<<"\\n";
+   return 19;
+  }
+ }
+ for(int n=0;n<hdLevels;n++){
+  const float sr=48000.f;
+  const float edge=sr*.48f/(float)((hdSamples/2)>>n);
+  for(float hz:{std::nextafter(edge,0.f),edge,std::nextafter(edge,1.e6f)}){
+   for(int start=0;start<hdLevels;start++){
+    int cached=start;
+    const auto a=HdTable::prepareSpectral(hz,sr);
+    const auto b=HdTable::prepareSpectralNear(hz,sr,cached);
+    if(a.valid!=b.valid||a.mip!=b.mip||a.blend!=b.blend)return 20;
+   }
+  }
+ }
+ // Some phase-warp modes round a phase close to 1.0 to exactly 1.0f.
+ // The optimized path must preserve the original circular wrap at 1.0.
+ const auto frame=bank->prepareFrame(.437f);
+ const auto spectrum=HdTable::prepareSpectral(700.f,48000.f);
+ if(bank->samplePreparedSpectralWrapped(1.f,frame,spectrum)!=
+    bank->samplePreparedSpectral(1.f,frame,spectrum))return 21;
  std::cout<<"HD: 256 x 2048, 4 banks, morph, anti-alias, resampling, publication OK\n";
  return 0;
 }

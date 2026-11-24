@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SerenityWavetable VERSION 1.2.9 LANGUAGES C CXX)
+project(SerenityWavetable VERSION 1.2.10 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Force UTF-8 compilation on Windows. Original French labels use UTF-8 literals.
@@ -38,6 +38,10 @@ if(BUILD_TESTING)
   add_executable(serenity_hd_tests Tests/hd_wavetable_tests.cpp)
   target_link_libraries(serenity_hd_tests PRIVATE serenity_dsp)
   add_test(NAME serenity_hd_tests COMMAND serenity_hd_tests)
+  # A measured SIMD feasibility study, isolated from production DSP.
+  add_executable(serenity_hd_simd_study Tests/hd_simd_study.cpp)
+  target_link_libraries(serenity_hd_simd_study PRIVATE serenity_dsp)
+  add_test(NAME serenity_hd_simd_study COMMAND serenity_hd_simd_study)
   find_package(Threads REQUIRED)
   add_executable(serenity_hd_quality Tests/hd_quality_control.cpp)
   target_link_libraries(serenity_hd_quality PRIVATE serenity_dsp Threads::Threads)
@@ -46,9 +50,9 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME serenity_hd_quality COMMAND serenity_hd_quality)
   set_tests_properties(serenity_hd_quality PROPERTIES TIMEOUT 240)
-  # Compile the identical A/B benchmark against the pinned v1.2.8 DSP and
+  # Compile the identical A/B benchmark against the pinned v1.2.9 DSP and
   # the current DSP. Each executable runs alternately on the same CI runner.
-  set(SERENITY_AB_BASELINE "${CMAKE_CURRENT_SOURCE_DIR}/baseline-v128/Source/DSP")
+  set(SERENITY_AB_BASELINE "${CMAKE_CURRENT_SOURCE_DIR}/baseline-v129/Source/DSP")
   if(EXISTS "${SERENITY_AB_BASELINE}/SerenityDSP.h")
     add_executable(serenity_hd_ab_baseline Tests/hd_ab_benchmark.cpp)
     target_include_directories(serenity_hd_ab_baseline PRIVATE "${SERENITY_AB_BASELINE}")
