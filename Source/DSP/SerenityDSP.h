@@ -389,6 +389,10 @@ class Engine {
  size_t delayIndex=0, reverbIndex=0;
  Params p;
  int activeCount=0;
+ // Audio-thread test switch, not a host parameter. Default is the existing
+ // production scalar path until full-engine A/B proves a grouped improvement.
+ // 0 reference, 1 grouped scalar, 2 experimental grouped NEON/SSE2.
+ int hdGroupMode=0;
  float lowpass(float x,float &state,float freq) noexcept {
   float coeff=1.0f-std::exp(-2.0f*pi*clamp(freq,10.0f,sr*.45f)/sr);
   state+=(x-state)*coeff;return state;
@@ -409,6 +413,10 @@ public:
  // Replaces one immutable fixed-size frame snapshot at a block boundary.
  // FFT and allocation are deliberately absent from this API and render().
  void setHdTable(int osc,const HdTable* table) noexcept {if(osc>=0&&osc<generators)hdTables[(size_t)osc]=table;}
+ // For the DSP benchmark only. The plugin never exposes or selects SIMD.
+ void setHdUnisonGroupMode(int mode) noexcept {
+  hdGroupMode=std::clamp(mode,0,2);
+ }
  void setCustomMipFrame(int oscillator,int frame,const CustomMipFrame& mips) noexcept {
   customBandlimited.setFrame(oscillator,frame,mips);
  }
@@ -696,7 +704,42 @@ public:
      const HdTable* const hd=p.wave[gen]==waveCount?hdTables[(size_t)gen]:nullptr;
      const HdTable::PreparedFrame prepared=hd?(frameMod==0.f?
        sharedFrames[(size_t)gen]:hd->prepareFrame(framePosition)):HdTable::PreparedFrame{};
-     for(int u=0;u<uni;u++){
+     // Four-oscillator groups preserve lane order, phases, pan and signal
+     // accumulation exactly. Only HD fixed-pitch unison can be grouped;
+     // FM/LFO dynamic paths continue to use their proven scalar reader.
+     const bool groupHd=hd&&fixedPitch&&uni>=4&&hdGroupMode!=0;
+     if(groupHd){
+      for(int start=0;start+4<=uni;start+=4){
+       alignas(16) float phases[4]{},samples[4]{};
+       HdTable::PreparedSpectral spectral[4]{};
+       for(int lane=0;lane<4;lane++){
+        const int u=start+lane;
+        spectral[lane]=pitchPlans[voiceIndex][(size_t)gen][(size_t)u].spectral;
+        const float shifted=v.phase[gen][u]+phaseMod+us.phase+
+             us.random*v.phaseJitter[(size_t)gen][(size_t)u];
+        phases[lane]=oscillatorWarpPhase(shifted,p.oscWarp[gen],p.oscWarpMode[gen]);
+       }
+       hd->sampleFourPreparedSpectralNormalized(phases,prepared,spectral,
+                                                samples,hdGroupMode==2);
+       for(int lane=0;lane<4;lane++){
+        const int u=start+lane;
+        auto& plan=pitchPlans[voiceIndex][(size_t)gen][(size_t)u];
+        float x=samples[lane];
+        const float blendGain=us.blendGain[(size_t)u];
+        x=oscillatorShape(x,p.oscShape[gen],p.oscShapeMode[gen]);
+        v.modSignal[(size_t)gen]+=x*level/(float)uni;
+        if(gen==0&&p.ringAmount>0.f){const float carrier=clamp(prior[1]+prior[2],-1.f,1.f);x*=mix(1.f,p.ringMode==0?carrier:.5f*(carrier+1.f),p.ringAmount);}
+        x*=amp*blendGain;
+        float &ph=v.phase[gen][u];
+        ph+=plan.phaseIncrement;
+        if(ph>=1.f)ph-=std::floor(ph);
+        float pan=panMod==0.f?us.pan[(size_t)u]:
+         clamp(us.relative[(size_t)u]*p.spread+panMod+p.oscPan[gen],-1.f,1.f);
+        vl+=x*(1-pan)*.5f;vr+=x*(1+pan)*.5f;
+       }
+      }
+     }
+     for(int u=groupHd?(uni/4)*4:0;u<uni;u++){
       auto& plan=pitchPlans[voiceIndex][(size_t)gen][(size_t)u];
       const float freq=fixedPitch?plan.frequency:
        clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);

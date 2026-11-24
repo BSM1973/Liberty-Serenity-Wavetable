@@ -119,6 +119,39 @@ int main(){
  const auto spectrum=HdTable::prepareSpectral(700.f,48000.f);
  if(bank->samplePreparedSpectralWrapped(1.f,frame,spectrum)!=
     bank->samplePreparedSpectral(1.f,frame,spectrum))return 21;
+ // v1.2.11: four-lane grouped interpolation with independent phases,
+ // frame morphing, spectral levels and unison detune. Only allowed deviation
+ // is in the opt-in SIMD arithmetic; scalar batching should be sample-exact.
+ for(int n=0;n<32000;n++){
+  const float pos=(float)((n*127u)%10003u)/10002.f;
+  const auto frame=bank->prepareFrame(pos);
+  float phases[4]{},scalar[4]{},vector[4]{};
+  HdTable::PreparedSpectral specs[4]{};
+  for(int lane=0;lane<4;lane++){
+   const unsigned k=(unsigned)n*4u+(unsigned)lane;
+   phases[lane]=(float)((k*313u)%10007u)/10007.f;
+   if(k%401u==0u)phases[lane]=1.f; // rounded phase wrap
+   const float sr=k%3u==0u?44100.f:k%3u==1u?48000.f:96000.f;
+   const float freq=20.f+(float)((k*191u)%32000u);
+   specs[lane]=HdTable::prepareSpectral(freq,sr);
+  }
+  for(int lane=0;lane<4;lane++)
+   scalar[lane]=bank->samplePreparedSpectralWrapped(phases[lane],frame,specs[lane]);
+  bank->sampleFourPreparedSpectralNormalized(phases,frame,specs,vector,false);
+  for(int lane=0;lane<4;lane++)
+   if(scalar[lane]!=vector[lane]){
+    std::cerr<<"HD grouped scalar differs at "<<n<<" lane "<<lane
+             <<" "<<scalar[lane]<<" vs "<<vector[lane]<<"\\n";
+    return 22;
+   }
+  bank->sampleFourPreparedSpectralNormalized(phases,frame,specs,vector,true);
+  for(int lane=0;lane<4;lane++)
+   if(!std::isfinite(vector[lane])||std::abs(scalar[lane]-vector[lane])>2.e-6f){
+    std::cerr<<"HD experimental SIMD differs at "<<n<<" lane "<<lane
+             <<" "<<scalar[lane]<<" vs "<<vector[lane]<<"\\n";
+    return 23;
+   }
+ }
  std::cout<<"HD: 256 x 2048, 4 banks, morph, anti-alias, resampling, publication OK\n";
  return 0;
 }

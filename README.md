@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.10 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.11 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -80,6 +80,16 @@ La version conserve les quatre banques HD complètes (256 formes de 2048 échant
 50 000 comparaisons déterministes plus les frontières de bandes vérifient la parité exacte des niveaux et des échantillons. Le benchmark A/B exécute 18 configurations sur les mêmes runners que la version épinglée v1.2.9, y compris le morphing, la FM, les LFO de hauteur, la déformation de phase WIDTH et le séquenceur à unisson ×16. Le test échoue en cas de différence sonore supérieure aux tolérances définies.
 
 Un prototype de calcul vectoriel sur quatre phases est mesuré séparément en **ARM NEON** sur macOS et **SSE2** sur Windows x64. Il compare la sortie à l'interpolation scalaire avec une tolérance stricte, puis mesure le temps total. Comme chaque oscillateur lit à une phase différente, les accès aux tables restent des *gathers* scalaires sous NEON/SSE2. Le prototype ne devient pas automatiquement une optimisation de production : son ratio de vitesse et la parité doivent être démontrés dans les rapports `hd-simd-study.txt`.
+
+## v1.2.11 — traitement groupé de l'unisson et comparaison SIMD dans le véritable moteur
+
+Le lecteur HD dispose d'un traitement par groupes de **quatre oscillateurs simultanés**, avec phases, niveaux anti-aliasing et interpolation de formes indépendants pour chaque oscillateur. Le groupement conserve l'ordre d'accumulation du signal, les 32 notes, les quatre générateurs, les 16 unités d'unisson et la résolution intégrale 256 × 2048 avec 11 niveaux spectraux.
+
+Trois modes internes permettent de comparer exactement le même `Engine::render` : 0 = moteur de référence, 1 = lecture groupée scalaire, 2 = lecture groupée en NEON (Apple Silicon) ou SSE2 (Windows x64). Seules les voix HD à hauteur stable sont groupées ; la modulation LFO/FM et toutes les autres formes gardent leur chemin existant. **Le plugin de production reste initialement en mode 0** ; le SIMD ne sera activé que si un benchmark moteur complet confirme un gain CPU sur la plateforme concernée, sans régression sonore.
+
+Le test `serenity_hd_group_engine_benchmark` instancie des moteurs audio complets : 32 notes, quatre tables HD distinctes, unisson ×4/×16, 48/96 kHz, morphing et séquenceur, ainsi qu'une charge LFO dynamique non groupable. Il compare l'intégralité des échantillons stéréo pour les trois modes, publie moyenne/p99/max/dépassements et emploie un ordre alterné pour réduire les biais thermiques. Les lecteurs groupés sont également comparés directement au lecteur scalaire sur 32 000 jeux de quatre phases et fréquences indépendantes.
+
+Le benchmark historique A/B sur le même runner continue de mesurer la v1.2.10 épinglée contre la v1.2.11. Les résultats `hd-unison-engine-benchmark.csv` doivent être examinés séparément sur macOS ARM NEON et Windows x64 SSE2. Aucune activation SIMD n'est présumée.
 
 ## Validation et distribution
 

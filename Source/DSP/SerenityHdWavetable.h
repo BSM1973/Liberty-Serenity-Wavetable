@@ -8,6 +8,15 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+// Vector arithmetic is available only to the explicitly opt-in full-engine
+// comparison. No SIMD path is selected by the released plugin.
+#if defined(__aarch64__) || defined(_M_ARM64)
+ #include <arm_neon.h>
+ #define SERENITY_HD_NEON 1
+#elif defined(__SSE2__) || defined(_M_X64)
+ #include <emmintrin.h>
+ #define SERENITY_HD_SSE2 1
+#endif
 
 namespace serenity {
 constexpr int hdSamples=2048,hdMaxFrames=256,hdLevels=11;
@@ -182,6 +191,82 @@ public:
                              const PreparedSpectral& spectral)const noexcept {
   if(!frame.frameA||!spectral.valid||!std::isfinite(phase))return 0.f;
   return samplePreparedSpectralWrapped(phase-std::floor(phase),frame,spectral);
+ }
+ // Process four independent unison phases as a group. The gather is scalar
+ // because each oscillator addresses a different wavetable sample. Arithmetic
+ // can be either scalar or explicitly experimental SIMD; the latter is never
+ // selected automatically by the plugin. Every lane keeps its own mip/blend.
+ static void lerp4(const float* a,const float* b,const float* t,
+                   float* out,bool simd) noexcept {
+#if defined(SERENITY_HD_NEON)
+  if(simd){
+   const auto x=vld1q_f32(a),y=vld1q_f32(b),f=vld1q_f32(t);
+   vst1q_f32(out,vaddq_f32(x,vmulq_f32(vsubq_f32(y,x),f)));
+   return;
+  }
+#elif defined(SERENITY_HD_SSE2)
+  if(simd){
+   const auto x=_mm_loadu_ps(a),y=_mm_loadu_ps(b),f=_mm_loadu_ps(t);
+   _mm_storeu_ps(out,_mm_add_ps(x,_mm_mul_ps(_mm_sub_ps(y,x),f)));
+   return;
+  }
+#else
+  (void)simd;
+#endif
+  for(int lane=0;lane<4;lane++)
+   out[lane]=a[lane]+(b[lane]-a[lane])*t[lane];
+ }
+ void sampleFourPreparedSpectralNormalized(const float* phases,
+             const PreparedFrame& frame,const PreparedSpectral* spectral,
+             float* result,bool simd=false)const noexcept {
+  if(!frame.frameA){
+   for(int lane=0;lane<4;lane++)result[lane]=0.f;
+   return;
+  }
+  // The mip lengths may differ between detuned voices, so gather every
+  // lane with its own mip, phase, and fractional index before vector math.
+  auto interpolateLevel=[&](int next,float* output)noexcept {
+   alignas(16) float a0[4]{},a1[4]{},b0[4]{},b1[4]{},fraction[4]{};
+   alignas(16) float x[4]{},y[4]{};
+   for(int lane=0;lane<4;lane++){
+    const auto& spec=spectral[lane];
+    if(!spec.valid||!std::isfinite(phases[lane]))continue;
+    const int mip=next&&spec.mip<hdLevels-1?spec.mip+1:spec.mip;
+    const int len=hdMipLength(mip);
+    const float phase=phases[lane]>=1.f?
+       phases[lane]-std::floor(phases[lane]):phases[lane];
+    const float idx=phase*len;
+    const int i=(int)idx,j=(i+1)&(len-1);
+    fraction[lane]=idx-i;
+    const int off=hdMipOffset(mip);
+    const float* const srcA=frame.frameA+off;
+    a0[lane]=srcA[i];a1[lane]=srcA[j];
+    if(frame.blend>0.f){
+     const float* const srcB=frame.frameB+off;
+     b0[lane]=srcB[i];b1[lane]=srcB[j];
+    }
+   }
+   lerp4(a0,a1,fraction,x,simd);
+   if(frame.blend>0.f){
+    lerp4(b0,b1,fraction,y,simd);
+    const float t[4]{frame.blend,frame.blend,frame.blend,frame.blend};
+    lerp4(x,y,t,output,simd);
+   }else for(int lane=0;lane<4;lane++)output[lane]=x[lane];
+  };
+  alignas(16) float first[4]{},second[4]{};
+  interpolateLevel(0,first);
+  bool anySecond=false;
+  for(int lane=0;lane<4;lane++)
+   anySecond|=spectral[lane].valid&&spectral[lane].mip<hdLevels-1&&spectral[lane].blend>0.f;
+  if(anySecond)interpolateLevel(1,second);
+  // Keep each voice's original interpolation order and skip its final
+  // lerp if the spectral blend is zero or the final mip is selected.
+  for(int lane=0;lane<4;lane++){
+   const auto& spec=spectral[lane];
+   if(!spec.valid||!std::isfinite(phases[lane]))result[lane]=0.f;
+   else if(spec.mip==hdLevels-1||spec.blend<=0.f)result[lane]=first[lane];
+   else result[lane]=first[lane]+(second[lane]-first[lane])*spec.blend;
+  }
  }
  float samplePrepared(float phase,const PreparedFrame& frame,float hz,float sr)const noexcept {
   if(!frame.frameA||!std::isfinite(phase)||!std::isfinite(hz)||
