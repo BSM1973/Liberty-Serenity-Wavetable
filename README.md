@@ -1,6 +1,6 @@
 # Serenity WAVETABLE — Liberty Music Software
 
-Version 1.2.11 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
+Version 1.2.12 — WAVETABLE HD ; import WAV/AIFF à taille de cycle explicite, basé sur la version 1.0.0 (build 126 réussi). Le contrôle utilisateur de la version précédente est de 10/11 critères ; le dernier critère non validé, non identifié, est reporté à la demande du propriétaire. La compilation et les tests de cette nouvelle version doivent être validés séparément.
 
 ## Plateformes et formats
 
@@ -110,3 +110,7 @@ Pour JUCE local : ajouter `-DJUCE_SOURCE_DIR=/chemin/vers/JUCE` à la configurat
 Zéro chevauchement, aucun caractère corrompu, accents français corrects, aucune commande trompeuse, fenêtre complète sans ascenseur, fidélité aux références, aucune régression sonore. Artefacts téléchargeables après validation des builds.
 
 Voir [l'historique de validation visuelle](docs/VISUAL_ACCEPTANCE_V0132.md).
+
+## v1.2.12 — HD Unison Acceleration
+
+Experimental eight-lane SoA spectral plans and isolated Windows AVX2 gather kernel with CPU/OS detection. Production remains scalar; no host parameter or UI change. Full-engine A/B, worst-trial p99/peak, all-trial overruns, 60 rendered seconds at 32 notes and unison x16, and platform-specific decision report. See docs/HD_UNISON_V1212.md.

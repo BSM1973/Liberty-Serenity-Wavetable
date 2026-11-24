@@ -338,6 +338,7 @@ class Engine {
   HdTable::PreparedSpectral spectral{};
  };
  std::array<std::array<std::array<VoiceOscPlan,maxUnison>,generators>,maxVoices> pitchPlans{};
+ std::array<std::array<HdTable::UnisonSoA,generators>,maxVoices> soaPlans{};
  // Persistent plans survive morph-only changes across blocks. Parameters
  // determining the exact pitch, sample-rate and HD state key invalidation.
  struct PitchPlanKey {
@@ -415,7 +416,8 @@ public:
  void setHdTable(int osc,const HdTable* table) noexcept {if(osc>=0&&osc<generators)hdTables[(size_t)osc]=table;}
  // For the DSP benchmark only. The plugin never exposes or selects SIMD.
  void setHdUnisonGroupMode(int mode) noexcept {
-  hdGroupMode=std::clamp(mode,0,2);
+  hdGroupMode=std::clamp(mode,0,4);
+   if(hdGroupMode==4&&!hdAvx2Available())hdGroupMode=3;
  }
  void setCustomMipFrame(int oscillator,int frame,const CustomMipFrame& mips) noexcept {
   customBandlimited.setFrame(oscillator,frame,mips);
@@ -550,7 +552,11 @@ public:
        key.mod==voiceMod && key.sampleRate==sr &&
        key.sequencePitch==cachedSequencePitch &&
        key.unison==us.count && key.hasHD==(hd!=nullptr);
-     if(same){readyPlans[vi][(size_t)gen]=true;continue;}
+     if(same){
+      if(hd&&hdGroupMode>=3)for(int u=0;u<us.count;u++)
+       soaPlans[vi][(size_t)gen].set(u,pitchPlans[vi][(size_t)gen][(size_t)u].spectral);
+      readyPlans[vi][(size_t)gen]=true;continue;
+     }
      const float staticPitch=std::exp2(
        (us.baseSemis+voiceMod+(float)cachedSequencePitch)/12.f);
      const float base=voice.baseFrequency*staticPitch;
@@ -560,6 +566,7 @@ public:
       plan.frequency=freq;
       plan.phaseIncrement=freq/sr;
       plan.spectral=hd?HdTable::prepareSpectral(freq,sr):HdTable::PreparedSpectral{};
+      if(hd&&hdGroupMode>=3)soaPlans[vi][(size_t)gen].set(u,plan.spectral);
      }
      key.voiceAge=voice.age;key.semis=us.baseSemis;
      key.detune=p.detune;key.mod=voiceMod;
@@ -707,21 +714,23 @@ public:
      // Four-oscillator groups preserve lane order, phases, pan and signal
      // accumulation exactly. Only HD fixed-pitch unison can be grouped;
      // FM/LFO dynamic paths continue to use their proven scalar reader.
-     const bool groupHd=hd&&fixedPitch&&uni>=4&&hdGroupMode!=0;
+     const int groupWidth=hdGroupMode>=3?8:4;
+     const bool groupHd=hd&&fixedPitch&&uni>=groupWidth&&hdGroupMode!=0;
      if(groupHd){
-      for(int start=0;start+4<=uni;start+=4){
-       alignas(16) float phases[4]{},samples[4]{};
+      for(int start=0;start+groupWidth<=uni;start+=groupWidth){
+       alignas(32) float phases[8]{},samples[8]{};
        HdTable::PreparedSpectral spectral[4]{};
-       for(int lane=0;lane<4;lane++){
+       for(int lane=0;lane<groupWidth;lane++){
         const int u=start+lane;
-        spectral[lane]=pitchPlans[voiceIndex][(size_t)gen][(size_t)u].spectral;
+        if(hdGroupMode<3)spectral[lane]=pitchPlans[voiceIndex][(size_t)gen][(size_t)u].spectral;
         const float shifted=v.phase[gen][u]+phaseMod+us.phase+
              us.random*v.phaseJitter[(size_t)gen][(size_t)u];
         phases[lane]=oscillatorWarpPhase(shifted,p.oscWarp[gen],p.oscWarpMode[gen]);
        }
-       hd->sampleFourPreparedSpectralNormalized(phases,prepared,spectral,
-                                                samples,hdGroupMode==2);
-       for(int lane=0;lane<4;lane++){
+       if(hdGroupMode>=3)
+        hd->sampleEightSoA(phases,prepared,soaPlans[voiceIndex][(size_t)gen],start,samples,hdGroupMode==4);
+       else hd->sampleFourPreparedSpectralNormalized(phases,prepared,spectral,samples,hdGroupMode==2);
+       for(int lane=0;lane<groupWidth;lane++){
         const int u=start+lane;
         auto& plan=pitchPlans[voiceIndex][(size_t)gen][(size_t)u];
         float x=samples[lane];
@@ -739,7 +748,7 @@ public:
        }
       }
      }
-     for(int u=groupHd?(uni/4)*4:0;u<uni;u++){
+     for(int u=groupHd?(uni/groupWidth)*groupWidth:0;u<uni;u++){
       auto& plan=pitchPlans[voiceIndex][(size_t)gen][(size_t)u];
       const float freq=fixedPitch?plan.frequency:
        clamp(base*us.pitch[(size_t)u],1.f,sr*.45f);

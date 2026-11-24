@@ -19,6 +19,12 @@
 #endif
 
 namespace serenity {
+#if defined(SERENITY_HD_AVX2_STUDY)
+bool hdAvx2Available() noexcept;
+void hdAvx2Interpolate8(const float*,const float*,const int*,const int*,const float*,float,float*) noexcept;
+#else
+inline bool hdAvx2Available() noexcept {return false;}
+#endif
 constexpr int hdSamples=2048,hdMaxFrames=256,hdLevels=11;
 constexpr double hdPi=3.1415926535897932384626433832795;
 using HdBin=std::complex<float>;
@@ -185,6 +191,69 @@ public:
   const float x=atLevel(spectral.mip);
   if(spectral.mip==hdLevels-1||spectral.blend<=0.f)return x;
   return x+(atLevel(spectral.mip+1)-x)*spectral.blend;
+ }
+ // Structure of arrays for phase-independent coefficients. Phase fractions
+ // must still be recomputed per oscillator/sample, with no approximation.
+ struct UnisonSoA {
+  alignas(32) int lengths[2][16]{},offsets[2][16]{},masks[2][16]{};
+  alignas(32) float mipBlend[16]{};
+  bool valid[16]{},second[16]{};
+  void set(int u,const PreparedSpectral& s) noexcept {
+   valid[u]=s.valid;second[u]=s.valid&&s.mip<hdLevels-1&&s.blend>0.f;
+   mipBlend[u]=s.blend;
+   for(int k=0;k<2;k++){
+    const int m=s.valid?std::min(s.mip+k,hdLevels-1):0;
+    lengths[k][u]=hdMipLength(m);offsets[k][u]=hdMipOffset(m);
+    masks[k][u]=lengths[k][u]-1;
+   }
+  }
+ };
+ void sampleEightSoA(const float* phases,const PreparedFrame& frame,
+                      const UnisonSoA& plan,int start,float* result,
+                      bool avx2=false) const noexcept {
+  if(!frame.frameA){std::fill_n(result,8,0.f);return;}
+  alignas(32) float cycle[8]{};
+  bool anySecond=false;
+  for(int lane=0;lane<8;lane++){
+   const float phase=phases[lane];
+   cycle[lane]=phase>=1.f?phase-std::floor(phase):phase;
+   anySecond|=plan.second[start+lane];
+  }
+  auto level=[&](int k,float* dst) noexcept {
+   alignas(32) int i0[8],i1[8];
+   alignas(32) float frac[8];
+   for(int lane=0;lane<8;lane++){
+    const int u=start+lane;
+    const float index=cycle[lane]*plan.lengths[k][u];
+    const int i=(int)index;
+    i0[lane]=plan.offsets[k][u]+i;
+    i1[lane]=plan.offsets[k][u]+((i+1)&plan.masks[k][u]);
+    frac[lane]=index-i;
+   }
+#if defined(SERENITY_HD_AVX2_STUDY)
+   if(avx2){
+    hdAvx2Interpolate8(frame.frameA,frame.frameB,i0,i1,frac,frame.blend,dst);
+    return;
+   }
+#else
+   (void)avx2;
+#endif
+   for(int lane=0;lane<8;lane++){
+    const int a=i0[lane],b=i1[lane];
+    const float x=frame.frameA[a]+(frame.frameA[b]-frame.frameA[a])*frac[lane];
+    if(frame.blend<=0.f){dst[lane]=x;continue;}
+    const float y=frame.frameB[a]+(frame.frameB[b]-frame.frameB[a])*frac[lane];
+    dst[lane]=x+(y-x)*frame.blend;
+   }
+  };
+  level(0,result);
+  alignas(32) float next[8]{};
+  if(anySecond)level(1,next);
+  for(int lane=0;lane<8;lane++){
+   const int u=start+lane;
+   if(!plan.valid[u])result[lane]=0.f;
+   else if(plan.second[u])result[lane]+=(next[lane]-result[lane])*plan.mipBlend[u];
+  }
  }
  // General-purpose API preserves arbitrary input-phase behavior.
  float samplePreparedSpectral(float phase,const PreparedFrame& frame,

@@ -9,6 +9,8 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
+#include <utility>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -24,7 +26,9 @@ constexpr Case cases[]={
  {"x16_96k_b256_static",96000,256,16,0,48},
  {"x4_48k_b256_static",48000,256,4,0,48},
  {"x16_48k_b128_dynamic_lfo",48000,128,16,3,48},
- {"x16_48k_b128_modulo_phase",48000,128,16,4,48}
+ {"x16_48k_b128_modulo_phase",48000,128,16,4,48},
+ {"x12_48k_b128_tail",48000,128,12,1,48},
+ {"x8_48k_b128_soa",48000,128,8,1,48}
 };
 struct Result{
  double mean=0,p99=0,peak=0;
@@ -62,7 +66,7 @@ static Result renderMode(const Case& sc,int mode){
  result.audio.reserve((size_t)sc.blocks*sc.buffer*2);
  std::vector<double> times;times.reserve((size_t)sc.blocks);
  for(int n=0;n<sc.blocks;n++){
-  p.position=.4f+.35f*std::sin(n*.043f);
+  p.position=sc.kind==0?.37f:.4f+.35f*std::sin(n*.043f);
   engine->setParams(p);
   std::fill(l.begin(),l.end(),0.f);std::fill(r.begin(),r.end(),0.f);
   const auto begin=Clock::now();
@@ -85,7 +89,7 @@ static Result renderMode(const Case& sc,int mode){
 }
 int main(int argc,char** argv){
  try{
-  if(argc!=2){std::cerr<<"usage: serenity_hd_group_engine_benchmark <report.csv>\n";return 2;}
+  if(argc!=2&&argc!=3){std::cerr<<"usage: serenity_hd_group_engine_benchmark <report.csv>\n";return 2;}
   for(int g=0;g<generators;g++){
    std::vector<float> pcm((size_t)hdMaxFrames*hdSamples);
    for(int f=0;f<hdMaxFrames;f++)for(int i=0;i<hdSamples;i++){
@@ -98,27 +102,39 @@ int main(int argc,char** argv){
   out<<std::fixed<<std::setprecision(8);
   out<<"scenario,mode,mean_ms,p99_ms,max_ms,deadline_ms,mean_budget_pct,p99_budget_pct,overruns,"
         "max_delta,relative_rms_delta,samples,quality_pass\n";
-  constexpr int orders[]{0,1,2,2,1,0};
+  const bool endurance=argc==3&&std::string(argv[2])=="--endurance";
+  const bool avx2=hdAvx2Available();
+  std::cout<<"AVX2 available: "<<avx2<<"\n";
+  const std::vector<int> modes=avx2?std::vector<int>{0,1,2,3,4}:std::vector<int>{0,1,2,3};
+  const std::vector<int> longModes=avx2?std::vector<int>{0,3,4}:std::vector<int>{0,3};
+  const auto& selected=endurance?longModes:modes;
+  std::vector<int> orders=selected;
+  if(!endurance)orders.insert(orders.end(),selected.rbegin(),selected.rend());
+  const std::vector<Case> scenarios=endurance?std::vector<Case>{{"x16_48k_b128_endurance_60s",48000,128,16,0,22500}}:std::vector<Case>(std::begin(cases),std::end(cases));
   bool allGood=true;
-  for(const auto& sc:cases){
-   std::array<std::vector<double>,3> means{},p99s{};
-   std::array<Result,3> first{};
-   std::array<bool,3> recorded{};
+  for(const auto& sc:scenarios){
+   std::array<std::vector<double>,5> means{},p99s{};
+   std::array<Result,5> first{};
+   std::array<bool,5> recorded{};
+   std::array<double,5> peaks{};
+   std::array<int,5> overruns{};
    for(int mode:orders){
-    const auto result=renderMode(sc,mode);
+    auto result=renderMode(sc,mode);
+    peaks[(size_t)mode]=std::max(peaks[(size_t)mode],result.peak);
+    overruns[(size_t)mode]+=result.overruns;
     means[(size_t)mode].push_back(result.mean);
     p99s[(size_t)mode].push_back(result.p99);
     if(!recorded[(size_t)mode]){
-     first[(size_t)mode]=result;
+     first[(size_t)mode]=std::move(result);
      recorded[(size_t)mode]=true;
     }
    }
    const double budget=1000.*sc.buffer/sc.sr;
-   for(int mode=0;mode<3;mode++){
+   for(int mode:selected){
     std::sort(means[(size_t)mode].begin(),means[(size_t)mode].end());
     std::sort(p99s[(size_t)mode].begin(),p99s[(size_t)mode].end());
-    const double mean=(means[(size_t)mode][0]+means[(size_t)mode][1])/2;
-    const double p99=(p99s[(size_t)mode][0]+p99s[(size_t)mode][1])/2;
+    const double mean=std::accumulate(means[(size_t)mode].begin(),means[(size_t)mode].end(),0.)/means[(size_t)mode].size();
+    const double p99=*std::max_element(p99s[(size_t)mode].begin(),p99s[(size_t)mode].end());
     double error=0,energy=0,maxDelta=0;
     const auto& original=first[0].audio;
     const auto& current=first[(size_t)mode].audio;
@@ -131,9 +147,9 @@ int main(int argc,char** argv){
     const double rms=std::sqrt(error/std::max(energy,1.e-20));
     const bool good=(maxDelta<=2.e-6&&rms<=1.e-6);
     allGood&=good;
-    out<<sc.name<<','<<mode<<','<<mean<<','<<p99<<','<<first[(size_t)mode].peak<<','
+    out<<sc.name<<','<<mode<<','<<mean<<','<<p99<<','<<peaks[(size_t)mode]<<','
        <<budget<<','<<100.*mean/budget<<','<<100.*p99/budget<<','
-       <<first[(size_t)mode].overruns<<','<<maxDelta<<','<<rms<<','
+       <<overruns[(size_t)mode]<<','<<maxDelta<<','<<rms<<','
        <<original.size()<<','<<(good?1:0)<<"\n";
     std::cout<<sc.name<<" mode "<<mode<<" mean "<<mean<<"ms p99 "<<p99
              <<"ms audio max delta "<<maxDelta<<" quality "<<good<<"\n";

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SerenityWavetable VERSION 1.2.11 LANGUAGES C CXX)
+project(SerenityWavetable VERSION 1.2.12 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Force UTF-8 compilation on Windows. Original French labels use UTF-8 literals.
@@ -44,7 +44,15 @@ if(BUILD_TESTING)
   target_link_libraries(serenity_hd_group_engine_benchmark PRIVATE serenity_dsp)
   add_test(NAME serenity_hd_group_engine_benchmark
            COMMAND serenity_hd_group_engine_benchmark hd-unison-engine-benchmark.csv)
-  set_tests_properties(serenity_hd_group_engine_benchmark PROPERTIES TIMEOUT 240)
+  set_tests_properties(serenity_hd_group_engine_benchmark PROPERTIES TIMEOUT 300)
+  if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_GENERATOR_PLATFORM STREQUAL "x64")
+    target_sources(serenity_hd_group_engine_benchmark PRIVATE Tests/hd_avx2_dispatch.cpp Tests/hd_avx2_kernel.cpp)
+    target_compile_definitions(serenity_hd_group_engine_benchmark PRIVATE SERENITY_HD_AVX2_STUDY=1)
+    set_source_files_properties(Tests/hd_avx2_kernel.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2;/fp:strict")
+  endif()
+  add_test(NAME serenity_hd_unison_endurance
+           COMMAND serenity_hd_group_engine_benchmark hd-unison-endurance.csv --endurance)
+  set_tests_properties(serenity_hd_unison_endurance PROPERTIES TIMEOUT 1800)
   # A measured SIMD feasibility study, isolated from production DSP.
   add_executable(serenity_hd_simd_study Tests/hd_simd_study.cpp)
   target_link_libraries(serenity_hd_simd_study PRIVATE serenity_dsp)
@@ -57,9 +65,9 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME serenity_hd_quality COMMAND serenity_hd_quality)
   set_tests_properties(serenity_hd_quality PROPERTIES TIMEOUT 240)
-  # Compile the identical A/B benchmark against the pinned v1.2.10 DSP and
+  # Compile the identical A/B benchmark against the pinned v1.2.11 DSP and
   # the current DSP. Each executable runs alternately on the same CI runner.
-  set(SERENITY_AB_BASELINE "${CMAKE_CURRENT_SOURCE_DIR}/baseline-v1210/Source/DSP")
+  set(SERENITY_AB_BASELINE "${CMAKE_CURRENT_SOURCE_DIR}/baseline-v1211/Source/DSP")
   if(EXISTS "${SERENITY_AB_BASELINE}/SerenityDSP.h")
     add_executable(serenity_hd_ab_baseline Tests/hd_ab_benchmark.cpp)
     target_include_directories(serenity_hd_ab_baseline PRIVATE "${SERENITY_AB_BASELINE}")
