@@ -7,7 +7,7 @@
 ## Chemin audio optimisé
 
 1. `oscillatorWarpPhase` produit déjà une phase en [0, 1] ; utiliser directement cette phase dans `HdTable::samplePreparedSpectralWrapped`. Le cas limite où l'arrondi donne exactement 1.0 est ramené à 0.0 comme précédemment. Les méthodes publiques acceptant une phase quelconque continuent à la normaliser.
-2. Pour les voies de hauteur dynamique, conserver seulement l'indice du niveau spectral précédent. `prepareSpectralNear` compare les frontières ascendantes/descendantes à partir de ce niveau. Il produit exactement le même indice et le même facteur `smoothstep` que `prepareSpectral`, y compris aux frontières.
+2. La variante `prepareSpectralNear` conserve le dernier niveau spectral et recherche localement les frontières. Son résultat est exactement égal à `prepareSpectral` sur les tests, mais l'essai du build n°142 a montré une forte régression CPU pour les modulations LFO/FM (surcoût de stockage et de contrôle par unité d'unisson). **Elle n'est donc pas activée dans le moteur**. Le chemin dynamique garde la préparation spectrale de référence, avec l'optimisation de phase normalisée.
 3. La fréquence, le désaccordage, la phase et la forme restent propres aux 16 oscillateurs, avec toutes les interpolations temporelles, entre formes et entre niveaux toujours actives.
 
 ## Mesures et SIMD
@@ -19,3 +19,11 @@
 - Les rapports incluent CPU moyen, percentile 99, délai des blocs et temps du prototype SIMD. Les chiffres des runners GitHub ne constituent pas une qualification temps réel sur l'ordinateur du musicien.
 
 Ne pas considérer des gains CPU comme acquis tant que les deux rapports complets n'ont pas été lus. Les artefacts doivent être téléchargeables après double build vert.
+
+## Décision après première mesure (build n°142)
+
+Les 18 comparaisons audio ont donné un écart nul sur les deux plateformes. Mais la stratégie de mip dynamique avec cache s'est révélée trop coûteuse : jusqu'à +60,81 % sous LFO 96 kHz sur macOS et +40,34 % sur Windows. L'optimisation est donc retirée du moteur avant livraison finale, sans réduire la fidélité.
+
+**SIMD prototype isolé :** le microbenchmark du premier essai donne ARM NEON 6,08 ms contre 13,59 ms en scalaire (rapport 0,448), tandis que Windows SSE2 donne 23,33 ms contre 12,41 ms en scalaire (rapport 1,880). Cette différence signifie qu'un déploiement SIMD indistinct sur les deux plateformes serait imprudent ; aucune voie SIMD n'est activée dans le moteur de production. Ces nombres caractérisent uniquement le microbenchmark, pas une accélération globale de la synthèse.
+
+Le build de révision est nécessaire pour valider la sélection spectrale de référence et mesurer les performances finales à unisson ×16.
