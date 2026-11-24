@@ -709,13 +709,13 @@ public:
       float x=0.f;
       if(p.wave[gen]==waveCount){
        if(hd){
-        // Same stateless spectral selection as v1.2.9 for dynamic LFO/FM.
-        // The first v1.2.10 benchmark proved stateful mip tracking slower
-        // (up to +40% at x16): keep the precise normalized-phase fast path
-        // but avoid thousands of per-sample cache writes.
-        const auto spectral=fixedPitch?plan.spectral:
-         HdTable::prepareSpectral(freq,sr);
-        x=hd->samplePreparedSpectralWrapped(warped,prepared,spectral);
+        // The normalized-phase optimization is faster for fixed pitch.
+        // Dynamic LFO/FM needs the original v1.2.9 inlined mip+sample
+        // path: splitting the search into two calls was slower on both
+        // runners even without a mip cache. No compromise on sound.
+        x=fixedPitch?
+          hd->samplePreparedSpectralWrapped(warped,prepared,plan.spectral):
+          hd->samplePrepared(warped,prepared,freq,sr);
        }else x=customBandlimited.sample(gen,warped,framePosition,freq,sr);
       }else x=bank.sample(p.wave[gen],warped,framePosition,freq,sr);
       const float blendGain=us.blendGain[(size_t)u];
